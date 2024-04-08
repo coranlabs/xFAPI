@@ -1,0 +1,71 @@
+# Build artifacts and compiled files
+build/
+bin/
+*.o
+*.so
+*.a
+a.out
+.vscode
+
+# Generated logs and stats
+generated_logs/
+*.log
+*.txt
+
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# CMake build files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+
+
+# Object files and make artifacts
+*.d
+
+# Stats vault (session data)
+stats_vault/
+src/dashboard/server/stats_vault/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+tmp/
+
+# Tracked files that would otherwise be caught by the patterns above.
+!CMakeLists.txt
+!src/ipc/xsm/libxsm.so
+
+
+# Frontend build artifacts
+src/dashboard/client/node_modules/
+src/dashboard/client/dist/
+
+# Dev scripts
+.logs.sh
+.logs_old.sh
