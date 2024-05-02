@@ -7,7 +7,7 @@
       </a>
     </td>
     <td style="border-collapse: collapse; border: none; vertical-align: center;">
-      <b><font size = "5">xFAPI: Facilitating Interoperability in Open RAN</font></b>
+      <b><h1>xFAPI: Facilitating Interoperability in Open RAN </h1></b>
     </td>
   </tr>
 </table>
