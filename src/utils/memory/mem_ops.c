@@ -1,0 +1,69 @@
+// Copyright 2024-2026 coRAN LABS Private Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "mem_ops.h"
+#include "../../include/common_types.h"
+#include <stdio.h>
+#include <string.h>
+
+inline uint8_t checked_memset(
+     void * const s,
+     size_t x,
+     int32_t c,
+     size_t n)
+ {
+
+     if ((n >= MSG_MAXSIZE) || (n > x)) {
+         printf
+             ("[MEMSET FAILED] %s : %d : max block size: %d, memset dst size: %ld, memset src size: %ld\n",
+             __func__, __LINE__, MSG_MAXSIZE, x, n);
+         return FAILURE;
+     }
+     memset(s, c, n);
+     return SUCCESS;
+ }
+
+ inline uint8_t checked_strncpy(
+     char * const d,
+     size_t x,
+     const char * const s,
+     size_t n)
+ {
+
+     if ((n >= MSG_MAXSIZE) || (n > x)) {
+         printf("[STRNCPY FAILED] %s : %d : max block size: %d, \
+             strcpy dst size: %ld, strcpy src size: %ld\n", __func__, __LINE__, MSG_MAXSIZE, x, n);
+         return FAILURE;
+     }
+
+     if ((char *)s < (char *)d) {
+         if ((((char *)s + x) >= (char *)d) || (((char *)s + n) >= (char *)d)) {
+             printf("[STRNCPY FAILED] %s : %d : max block size: %d, \
+                     strcpy dst size: %ld, strcpy src size: %ld, \
+                     Source pointer %p overlaps into destination pointer %p\n", __func__, __LINE__, MSG_MAXSIZE, x, n, s, d);
+             return FAILURE;
+         }
+     }
+
+     if ((char *)d < (char *)s) {
+         if ((((char *)d + x) >= (char *)s) || (((char *)d + n) >= (char *)s)) {
+             printf("[STRNCPY FAILED] %s : %d : max block size: %d, \
+                     strcpy dst size: %ld, strcpy src size: %ld, \
+                     Destination pointer %p overlaps into source pointer %p\n", __func__, __LINE__, MSG_MAXSIZE, x, n, d, s);
+             return FAILURE;
+         }
+     }
+     strncpy(d, s, n);
+     return SUCCESS;
+ }
