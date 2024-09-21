@@ -2,12 +2,12 @@
   <tr style="border-collapse: collapse; border: none;">
     <td style="border-collapse: collapse; border: none;">
       <a href="http://www.coranlabs.com/">
-         <img src="./docs/images/logo.png" alt="" border=2 height=60 width=270>
+         <img src="./docs/images/logo.png" alt="" border=2 height=120 width=220>
          </img>
       </a>
     </td>
     <td style="border-collapse: collapse; border: none; vertical-align: center;">
-      <b><h1>xFAPI: Facilitating Interoperability at L1-L2 Interface in O-RAN </h1></b>
+      <b><h1>xFAPI: The Future of OpenRAN. </h1></b>
     </td>
   </tr>
 </table>
@@ -26,42 +26,48 @@
 
 ## Introduction
 
-xFAPI is an intermediate component that establishes connections between any L1 and L2 layer of O-RAN, operating as a translator for both FAPI and nFAPI interfaces.
+xFAPI is an intermediate component that facilitates interoperability between L1s and L2s from different vendors.
+xFAPI acts as a translator, providing interoperability between different IPC mechanisms, including shared memory (xSM) and sockets (nFAPI). 
 
-xFAPI acts as a translator, providing interoperability between different IPC mechanisms, including shared memory (xSM) and sockets (nFAPI). Additionally, xFAPI includes an integrated capability that can be activated at runtime based on compilation flag that will check if L1-L2 are interoperable and provide the option to use xFAPI if desired (for additional functionalities such as detailed PDU stat generation at both interfaces, debugging tools like memory logger, state manager, multi-level logging, and monitoring and analysis on the dashboard)
 
-> [!NOTE]  
+> [NOTE]  
 > xSM is a comprehensive shared memory library supporting various shared memory mechanisms, enabling L1 and L2 vendors to exchange messages on a common platform.
 
-![xfapi-architecture](./docs/images/xfapi-architecture.png)
+## Interoperability Issue in FAPI interface
+Interoperability between Layer 1 (L1) and Layer 2 (L2) components in Open RAN remains a significant challenge despite the existence of the FAPI specification. 
 
-## Purpose of xFAPI
+While FAPI provides a standardized interface for communication, different vendors implement it with slight variations in message formats, timing requirements, parameter interpretations, and optional features. 
 
-- Closed MAC-PHY Interface: Despite O-RAN's emphasis on modularity and open interfaces, the MAC-PHY interface, i.e. FAPI, is not open yet.
+Complex Integration: L2-L3 vendors aiming to demonstrate interoperability with different L1s face the challenge of managing multiple intermediary components and shared memory libraries, one for each L1 vendor.
 
-![fapi-interoperability-issue](./docs/images/fapi-interoperability-issue.png)
+These inconsistencies lead to failures in message exchange, synchronization issues, and incompatibilities between L1 and L2 components from different vendors. As a result, seamless integration of multi-vendor solutions in Open RAN is hindered, limiting the flexibility and scalability that Open RAN promises.
 
-- Vendor-Specific Implementations: L1 vendors design their software such that L2-L3 vendors, who adhere to 3GPP standards, must either modify their code to align with L1 specifications or use an additional component to facilitate the connection, risking 3GPP compliance.
 
-- Intermediary Components: To maintain compliance and ensure end-to-end connection, most L2-L3 vendors opt to use intermediary components. Each L1 vendor proposes a unique intermediary component and shared memory library implementation, which leads to vendor lock-in.
+### xFAPI Architecture :
+![xfapi-architecture](./docs/images/xfapi_architecture.png)
 
-- Complex Integration: L2-L3 vendors aiming to demonstrate interoperability with different L1s face the challenge of managing multiple intermediary components and shared memory libraries, one for each L1 vendor.
+## Reference Architecture
 
-![interoperability-with-xfapi](./docs/images/interoperability-with-xfapi.png)
+![reference-architecture](./docs/images/reference-architecture.png)
 
-By addressing these issues, xFAPI aims to provide a unified and standardized interface that promotes interoperability and reduces vendor lock-in.
+## Need of xfapi
+xFAPI is an interoperable component designed to enable seamless connectivity between Layer 1 (L1) and Layer 2 (L2) components from different vendors, which are not inherently interoperable.
 
-## Current Landscape
+It acts as a bridge by facilitating communication across various inter-process communication (IPC) mechanisms, such as sockets and shared memory, while also providing translation between different API standards.
+
+By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures a vendor-agnostic Radio Access Network (RAN) stack, enhancing flexibility and interoperability within the ecosystem.
+
+
+## Current Status
 
 ### L1-L2 Support
 
 | L1      | L2  | Status      |
 | ------- | --- | ----------- |
 | FlexRAN | OSC | ✅ Done     |
-| OAI     | OAI | 🟡 Ongoing  |
 | OAI     | OSC | 🟡 Ongoing  |
+| Aerial  | OSC | 🟡 Ongoing  |
 | FlexRAN | OAI | 📅 Planning |
-| Aerial  | OSC | 📅 Planning |
 | Aerial  | OAI | 📅 Planning |
 
 #### FlexRAN OSC DU-High Topology
@@ -70,7 +76,7 @@ By addressing these issues, xFAPI aims to provide a unified and standardized int
 
   - **Topology:** 3GPP-Compliant 5G Core + modified OAI CU + modified OSC DU-High + xFAPI + FlexRAN v22.11/v23.07 + LiteON
 
-![flexran-osc-du-high-topology](./docs/images/flexran-osc-topology.png)
+![flexran-osc-du-high-topology](./docs/images/flexran_osc_topology.png)
 
 #### OAI L1 OSC DU-High Topology
 
@@ -78,56 +84,36 @@ By addressing these issues, xFAPI aims to provide a unified and standardized int
 
   - **Topology:** 3GPP-Compliant 5G Core + modified OAI CU + modified OSC DU-High + xFAPI + OAI L1 + LiteON + COTS UE
 
-![oai-l1-osc-du-high-topology](./docs/images/oai-osc-topology.png)
+![oai-l1-osc-du-high-topology](./docs/images/oai_osc_topology.png)
 
-### IPC Mechanism Support
+![xfapi_current_status](./docs/images/current_status_table.png)
 
-| IPC Mechanism         | L1-Side Interface      | L2-Side Interface |
-| --------------------- | ---------------------- | ----------------- |
-| Shared Memory (WLS)   | ✅ Supported           | ✅ Supported      |
-| Sockets (nFAPI)       | 🟡 Partially supported | 📅 Planning       |
-| Shared Memory (nvIPC) | 📅 Planning            | 📅 Planning       |
 
-## Reference Architecture
+## Additional Features
 
-![reference-architecture](./docs/images/reference-architecture.png)
+- **Dashboard Support:** xFAPI includes an advanced dashboard that provides detailed statistics, PDU analysis, and debugging tools. It offers seamless integration with various OpenRAN vendors on a unified platform.
 
-```r
-+---------------+-----------------------------------------------------------+--------------------------------+
-| Communities   |                    Current Landscape                      |          Future Plans          |
-|               +-----------------------------------------------------------+--------------------------------+
-|               |                   Supported Topologies                    |       Topologies Support       |
-|               +------+------------+-----------+---------------------------+------+------------+------------+
-|               | No.  | L1         | L2        | Dis-aggregation Support   | No.  | L1         | L2         |
-+---------------+------+------------+-----------+---------------------------+------+------------+------------+
-| OSC           | 1    | FlexRAN    | OSC       | N/A                       | 2    | FlexRAN    | OSC        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | OAI        | OSC        |
-+---------------+------+------------+-----------+---------------------------+------+------------+------------+
-| OAI           | 2    | OAI        | OAI       | Yes                       | 3    | OAI        | OAI        |
-|               |      +------------+-----------+---------------------------+      +------------+------------+
-|               |      | Nvidia     | OAI       | N/A                       |      | Aerial     | OAI        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | OSC        | OAI        |
-+---------------+------+------------+-----------+---------------------------+------+------------+------------+
-| xFAPI         | 4    | FlexRAN    | OSC       | Yes                       | Any  | FlexRAN    | OSC        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | FlexRAN    | OAI        |
-|               |      +------------+-----------+---------------------------+      +------------+------------+
-|               |      | FlexRAN    | OAI       | Yes                       |      | OAI        | OSC        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | OAI        | OAI        |
-|               |      +------------+-----------+---------------------------+      +------------+------------+
-|               |      | OAI        | OAI       | Yes                       |      | Aerial     | OSC        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | Aerial     | OAI        |
-|               |      +------------+-----------+---------------------------+      +------------+------------+
-|               |      | OAI        | OSC       | Yes                       |      | ---        | ---        |
-|               |      |            |           |                           |      +------------+------------+
-|               |      |            |           |                           |      | ---        | ---        |
-+---------------+------+------------+-----------+---------------------------+------+------------+------------+
+- **Simulation Mode:** Vendors can test their components for compatibility with any of the supported L1 or L2 implementations without requiring physical access to them. xFAPI's simulation mode enables comprehensive interoperability testing in a virtualized environment.
 
-```
+
+
+## xFAPI EcoSystem
+![xFAPI Ecosystem](./docs/images/xfapi_ecosystem.png)
+
+#### AI-xFAPI
+xFAPI integrates an AI/ML framework and an InfluxDB-based DataLake for intelligent automation. It features dedicated O1 and E2 interfaces, facilitating seamless connection with SMO and near-RT RIC, allowing better data/KPI extraction and model training.
+#### PQC-xFAPI
+Establishes a highly secure communication channel between L1 and L2 components across diverse IPC mechanisms using advanced lattice-based post-quantum cryptography (PQC).
+
+Fortifies shared memory-based communication by mitigating vulnerabilities against buffer overflow attacks, RDMA-based exploits, and other threats.
+#### eBPF-xFAPI
+Implements kernel-level packet filtering and real-time traffic monitoring, enabling highly optimized and low-latency message processing over the FAPI interface.
+
+Enhances system stability and performance by leveraging eBPF’s in-kernel execution capabilities, allowing efficient interception, classification, and forwarding of critical control and data messages.
+
+#### QML-xFAPI
+Utlising Quantum Machine Learning for reducing error rates in L1-L2 communication, ensuring higher precision and reliability.Future-proofs xFAPI by integrating quantum computing techniques, paving the way for next-generation advancements in OpenRAN stack.
+
 
 ## References
 
@@ -138,3 +124,5 @@ By addressing these issues, xFAPI aims to provide a unified and standardized int
 |                       | Recording    | [Watch](https://zoom.us/rec/play/G54aZjpA34mBBkagXaHKS2-czoy8oEQ8m7bPI7vaKgSvH1UGqwSx0bx3uF7Bb37RRgQpOp1f-4v4Wo0i.KJt64HspDhWl75ov?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2F-ZFH16_eVRto4atlwUE6l77dKtoJj53_bfZvZ3wgWWI9nDJc3dvZZiK-A5v-5Nrh.PyEgerJdoNW9qQbR) |
 | xFAPI Blueprint       | Presentation | [View](https://wiki.o-ran-sc.org/download/attachments/78217260/xFAPI%20Blueprint.pdf?api=v2)                                                                                                                                                                                                                                                                            |
 |                       | Recording    | [Watch](https://zoom.us/rec/play/deV06o9uQO1JlMRg93UIJHh6CYleU8OeYPl11zRVZkdiYKycdQWwnArWUvwIJdOmH1jVVh151063WRKW.UR4vegH8q1lK3187?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2FwmQNLvP9c1nOTzGHQsoaA7zP-lgwFO0XUW2OWIcTC2KtBNAIOIKlwib6pvvpENiD.Rkmvy2QyiMAk-bT1) |
+|xFAPI Deployment Guide- O-RAN-SC K-Release| Doc    | [View](https://lf-o-ran-sc.atlassian.net/wiki/spaces/IAT/pages/176226489/xFAPI+Deployment+Guideline) |
+|xFAPI Deployment in O-RAN-SC Lab,Taiwan| Video    | [Watch](https://www.youtube.com/watch?v=sXFv2xor5pg) |
