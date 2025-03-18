@@ -102,7 +102,7 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 
 
 ## xFAPI EcoSystem
-![xFAPI Ecosystem](./docs/images/xfapi_ecosystem.png)
+![xFAPI Ecosystem](./docs/images/xfapi_ecosystem_tp.png)
 
 #### 🔵 AI-xFAPI
 xFAPI integrates an AI/ML framework and an InfluxDB-based DataLake for intelligent automation. It features dedicated O1 and E2 interfaces, facilitating seamless connection with SMO and near-RT RIC, allowing better data/KPI extraction and model training.
