@@ -1,28 +1,32 @@
-<table style="border-collapse: collapse; border: none;">
+
+
+<table style="border-collapse: collapse; border: none; width: 100%;">
   <tr style="border-collapse: collapse; border: none;">
     <td style="border-collapse: collapse; border: none;">
       <a href="http://www.coranlabs.com/">
          <img src="./docs/images/logo.png" alt="" border=2 height=120 width=220>
-         </img>
       </a>
     </td>
-    <td style="border-collapse: collapse; border: none; vertical-align: center;">
-      <b><h1>xFAPI: The Future of OpenRAN. </h1></b>
+    <td style="border-collapse: collapse; border: none; width: 100%; text-align: center;">
+      <b><h1>xFAPI: The Future of OpenRAN.</h1></b>
     </td>
   </tr>
 </table>
 
-## Table of Contents
+<p align="center"><i>"Making the OpenRAN Truly Open."</i></p>
 
+## Table of Contents
 - [Introduction](#introduction)
-- [Purpose of xFAPI](#purpose-of-xfapi)
-- [Current Landscape](#current-landscape)
-  - [L1-L2 Support](#l1-l2-support)
-    - [FlexRAN OSC DU-High Topology](#flexran-osc-du-high-topology)
-    - [OAI L1 OSC DU-High Topology](#oai-l1-osc-du-high-topology)
-  - [IPC Mechanism Support](#ipc-mechanism-support)
-- [Reference Architecture](#reference-architecture)
+- [Interoperability Issue in FAPI Interface](#interoperability-issue-in-fapi-interface)
+- [xFAPI Architecture](#xfapi-architecture)
+- [Need of xFAPI](#need-of-xfapi)
+- [Current Status](#current-status)
+  - [FlexRAN OSC DU-High Topology](#flexran-osc-du-high-topology)
+  - [OAI L1 OSC DU-High Topology](#oai-l1-osc-du-high-topology)
+- [Additional Features](#additional-features)
+- [xFAPI Ecosystem](#xfapi-ecosystem)
 - [References](#references)
+
 
 ## Introduction
 
@@ -43,7 +47,7 @@ Complex Integration: L2-L3 vendors aiming to demonstrate interoperability with d
 These inconsistencies lead to failures in message exchange, synchronization issues, and incompatibilities between L1 and L2 components from different vendors. As a result, seamless integration of multi-vendor solutions in Open RAN is hindered, limiting the flexibility and scalability that Open RAN promises.
 
 
-### xFAPI Architecture :
+### xFAPI Architecture
 ![xfapi-architecture](./docs/images/xfapi_architecture.png)
 
 ## Reference Architecture
@@ -100,18 +104,18 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 ## xFAPI EcoSystem
 ![xFAPI Ecosystem](./docs/images/xfapi_ecosystem.png)
 
-#### AI-xFAPI
+#### 🔵 AI-xFAPI
 xFAPI integrates an AI/ML framework and an InfluxDB-based DataLake for intelligent automation. It features dedicated O1 and E2 interfaces, facilitating seamless connection with SMO and near-RT RIC, allowing better data/KPI extraction and model training.
-#### PQC-xFAPI
+#### 🔵 PQC-xFAPI
 Establishes a highly secure communication channel between L1 and L2 components across diverse IPC mechanisms using advanced lattice-based post-quantum cryptography (PQC).
 
 Fortifies shared memory-based communication by mitigating vulnerabilities against buffer overflow attacks, RDMA-based exploits, and other threats.
-#### eBPF-xFAPI
+#### 🔵 eBPF-xFAPI
 Implements kernel-level packet filtering and real-time traffic monitoring, enabling highly optimized and low-latency message processing over the FAPI interface.
 
 Enhances system stability and performance by leveraging eBPF’s in-kernel execution capabilities, allowing efficient interception, classification, and forwarding of critical control and data messages.
 
-#### QML-xFAPI
+#### 🔵 QML-xFAPI
 Utlising Quantum Machine Learning for reducing error rates in L1-L2 communication, ensuring higher precision and reliability.Future-proofs xFAPI by integrating quantum computing techniques, paving the way for next-generation advancements in OpenRAN stack.
 
 
