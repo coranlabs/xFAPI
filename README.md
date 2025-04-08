@@ -62,18 +62,6 @@ It acts as a bridge by facilitating communication across various inter-process c
 By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures a vendor-agnostic Radio Access Network (RAN) stack, enhancing flexibility and interoperability within the ecosystem.
 
 
-## Current Status
-
-### L1-L2 Support
-
-| L1      | L2  | Status      |
-| ------- | --- | ----------- |
-| FlexRAN | OSC | ✅ Done     |
-| OAI     | OSC | 🟡 Ongoing  |
-| Aerial  | OSC | 🟡 Ongoing  |
-| FlexRAN | OAI | 📅 Planning |
-| Aerial  | OAI | 📅 Planning |
-
 #### FlexRAN OSC DU-High Topology
 
 - xFAPI has successfully achieved end-to-end (E2E) connection between OSC DU-High and FlexRAN versions `v22.11` and `v23.07`.
