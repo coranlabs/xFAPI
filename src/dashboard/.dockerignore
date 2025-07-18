@@ -1,0 +1,44 @@
+# Keep the build context small. The Dockerfile only needs:
+#   client/{package.json,package-lock.json,index.html,vite.config.js,public/,src/}
+#   server/{*.py,requirements.txt}
+# Everything else can stay on the host.
+
+# Node — built inside the image, never copied from host
+client/node_modules
+client/dist
+client/.graveyard
+client/.vite
+
+# Python — bytecode and venv noise
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/venv
+**/.venv
+
+# Dev/test/scratch files that aren't needed at runtime
+server/server.log
+server/test_*.py
+server/migrate_vault.py
+# Vault is mounted as a volume at runtime; never bake it into the image.
+server/stats_vault
+server/stats_vault/**
+**/*.swp
+**/*.log
+.DS_Store
+
+# Version-control + editor metadata
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+
+# Docker meta (no need to copy into image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml

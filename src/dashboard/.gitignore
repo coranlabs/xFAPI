@@ -1,0 +1,43 @@
+# XFAPI Dashboard — .gitignore
+#
+# Mirrors most of .dockerignore so a fresh clone stays clean, and so
+# `git add .` can't accidentally commit any of the heavy / generated /
+# secret-shaped stuff below.
+
+# ── Node / Vite build artefacts ──────────────────────────────────────────
+client/node_modules
+client/dist
+client/.vite
+client/.graveyard
+
+# Local-only npm noise
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Python ───────────────────────────────────────────────────────────────
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/venv
+**/.venv
+
+# ── Runtime data, never commit ───────────────────────────────────────────
+# Saved capture sessions live as bind-mounted Docker volumes in production;
+# don't ship them inside the repo.
+server/stats_vault/*.json
+server/server.log
+server/*.log
+
+# ── Editor / OS noise ────────────────────────────────────────────────────
+**/*.swp
+**/*.swo
+.DS_Store
+.idea
+.vscode
+
+# ── Build metadata ───────────────────────────────────────────────────────
+# Docker BuildKit emits these into the context when iterating locally.
+.docker-build-cache
