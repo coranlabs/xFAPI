@@ -1,0 +1,67 @@
+# XFAPI Dashboard — production-style compose file.
+#
+#   docker compose up -d --build
+#   → dashboard available at http://localhost:8080
+#
+# This compose file expects the host's XFAPI directory to be available at
+# the path you set in `XFAPI_HOME_HOST` (default: ../../).  Adjust to suit
+# your deployment.
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Stamp the image with the current git SHA + build timestamp so the
+        # /api/health uptime + image inspect tells you exactly what's running.
+        GIT_SHA: "${GIT_SHA:-dev}"
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
+    image: xfapi-dashboard:latest
+    container_name: xfapi-dashboard
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      # Path inside the container where the dashboard expects the XFAPI repo
+      # (it then reads generated_logs/message_stats.json from there).
+      XFAPI_HOME: /data/xfapi
+      XFAPI_VAULT_DIR: /data/vault
+      # Allow same-origin and any reverse proxy you set up. Override for
+      # cross-origin dev tooling. Use "*" only if you fully trust the network.
+      XFAPI_CORS_ORIGINS: "http://localhost:${HOST_PORT:-8080},http://127.0.0.1:${HOST_PORT:-8080}"
+      # Worker count. Bump if you serve many concurrent users; each worker
+      # holds its own copy of message_data in memory.
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}"
+      XFAPI_LOG_LEVEL: "${XFAPI_LOG_LEVEL:-INFO}"
+      XFAPI_LOG_FORMAT: "${XFAPI_LOG_FORMAT:-json}"
+    volumes:
+      # Host XFAPI dir → /data/xfapi (read-only is recommended; the dashboard
+      # only reads message_stats.json from generated_logs/).
+      - "${XFAPI_HOME_HOST:-../..}:/data/xfapi:ro"
+      # Vault — saved sessions. Named volume keeps history across restarts.
+      - xfapi-vault:/data/vault
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    # Modest resource caps; tweak for your environment.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2"
+    # Hardening — drop everything, no new privs.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Read-only root FS; the vault path and /tmp need to stay writable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+
+volumes:
+  xfapi-vault:
+    driver: local
