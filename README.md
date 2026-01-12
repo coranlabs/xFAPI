@@ -34,3 +34,12 @@ See [docs/dashboard_install.md](docs/dashboard_install.md) for the web dashboard
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
+
+## Dashboard
+
+xFAPI ships a web dashboard for exploring captured 5G FAPI message statistics
+in real time. It connects to the FastAPI backend (`src/dashboard/server`) and
+renders per-message KPI tiles, flow charts, sequence diagrams, and a hex
+payload search.
+
+See [docs/dashboard_install.md](docs/dashboard_install.md) for setup.
