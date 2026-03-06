@@ -324,6 +324,131 @@ void parse_wls_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigF
     }
 }
 
+#ifdef OCUDU_OCUDU
+
+static void parse_ocudu_xsm_endpoint_config(yaml_parser_t *parser,
+                                            ocudu_xsm_endpoint_config_t *ep) {
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in ocudu_xsm endpoint\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "device_name") == 0) {
+                        strncpy(ep->device_name, val, sizeof(ep->device_name) - 1);
+                        ep->device_name[sizeof(ep->device_name) - 1] = '\0';
+                    } else if (strcmp(current_key, "memory_size") == 0) {
+                        ep->memory_size = strtoull(val, NULL, 10);
+                    } else if (strcmp(current_key, "queue_capacity") == 0) {
+                        ep->queue_capacity = (uint32_t)strtoul(val, NULL, 10);
+                    } else if (strcmp(current_key, "return_queue_capacity") == 0) {
+                        ep->return_queue_capacity = (uint32_t)strtoul(val, NULL, 10);
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_ocudu_xsm_endpoint_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+
+void parse_ocudu_xsm_l1_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    parse_ocudu_xsm_endpoint_config(parser, &config->ocudu_xsm_l1);
+}
+
+void parse_ocudu_xsm_l2_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    parse_ocudu_xsm_endpoint_config(parser, &config->ocudu_xsm_l2);
+}
+
+void parse_ocudu_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                   xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in ocudu_forwarder\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "l1_to_l2_core_id") == 0) {
+                        config->ocudu_forwarder.l1_to_l2_core_id = atoi(val);
+                    } else if (strcmp(current_key, "l2_to_l1_core_id") == 0) {
+                        config->ocudu_forwarder.l2_to_l1_core_id = atoi(val);
+                    } else if (strcmp(current_key, "priority") == 0) {
+                        config->ocudu_forwarder.priority = atoi(val);
+                    } else if (strcmp(current_key, "sched_policy") == 0) {
+                        strncpy(config->ocudu_forwarder.sched_policy, val,
+                                sizeof(config->ocudu_forwarder.sched_policy) - 1);
+                        config->ocudu_forwarder.sched_policy[
+                            sizeof(config->ocudu_forwarder.sched_policy) - 1] = '\0';
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_ocudu_forwarder_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+#endif
 
 void parse_simulation_mode_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigFlags *config_flags) {
     yaml_event_t event;
@@ -754,6 +879,18 @@ int parse_yaml_main(const char *filename, AppContext *app_ctx) {
                         parse_stats_file_generation_config(&parser, config, config_flags);
                         expecting_key = 1;
                     }
+#ifdef OCUDU_OCUDU
+                    else if (strcmp(current_top_key, "ocudu_xsm_l1") == 0) {
+                        parse_ocudu_xsm_l1_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "ocudu_xsm_l2") == 0) {
+                        parse_ocudu_xsm_l2_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "ocudu_forwarder") == 0) {
+                        parse_ocudu_forwarder_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    }
+#endif
                     else {
 
                         printf("Skipping unknown top-level key: %s\n", current_top_key);

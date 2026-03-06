@@ -15,67 +15,260 @@
 #ifndef COMMON_GLOBAL_H
 #define COMMON_GLOBAL_H
 
-#include "common_types.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
+#include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <time.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <pthread.h>
+#include "common_types.h"
+#include "itc_queue.h"
 
 typedef struct {
     int core_id;
     int priority;
-    char sched_policy[16];
+    char sched_policy[20];
 } task_config_t;
 
 typedef struct {
-    task_config_t l1_to_l2;
-    task_config_t l2_to_l1;
-} forwarder_config_t;
+    pthread_t thread_id;
+    pthread_attr_t thread_attr;
+    char name[32];
+    void *(*start_routine)(void *);
+    void *arg;
+    volatile int should_run;
+    int core_id;
+    int priority;
+    ITC_Queue_t queue;
+
+} thread_mgt_t;
 
 typedef struct {
-    char *device_name;
-    uint64_t memory_size;
-    int queue_capacity;
-    int return_queue_capacity;
-} xsm_endpoint_config_t;
+    thread_mgt_t thread_mgt;
+    int core_id;
+    char sched_policy[20];
+    int priority;
+} thread_task_t;
 
 typedef struct {
-    int  dpdk_iova_mode;
-    char dpdk_memory_zone[64];
+    thread_task_t rx_task;
+    thread_task_t tx_task;
+    thread_task_t xSM_recv_task;
+    thread_task_t dashboard_task;
+} core_config_t;
+
+typedef struct {
+    thread_task_t rx_task;
+    thread_task_t tx_task;
+} core_config_sim_mode_t;
+
+typedef struct {
+    int dpdk_iova_mode;
+    char dpdk_memory_zone[32];
     char dpdk_device_1[32];
     char dpdk_device_2[32];
 } dpdk_config_t;
 
 typedef struct {
-    int    mode;
+    char wls_device_name[512];
+    unsigned long wls_mem_size;
+    uint64_t wls_shmem_size;
+} wls_config_t;
+
+#ifdef OCUDU_OCUDU
+
+typedef struct {
+    char     device_name[64];
+    uint64_t memory_size;
+    uint32_t queue_capacity;
+    uint32_t return_queue_capacity;
+} ocudu_xsm_endpoint_config_t;
+
+typedef struct {
+    int  l1_to_l2_core_id;
+    int  l2_to_l1_core_id;
+    int  priority;
+    char sched_policy[20];
+} ocudu_forwarder_config_t;
+
+/* Split-mode configuration. Selected via YAML key `split.role`:
+ *   none -> single-host bridge (today's behaviour, both pairs in one memzone)
+ *   L1   -> this XFAPI process runs on the L1 server, the L2 side is on a
+ *           peer XFAPI reached over a DPDK NIC link
+ *   L2   -> symmetric: this XFAPI process runs on the L2 server
+ */
+typedef enum {
+    SPLIT_NONE = 0,
+    SPLIT_L1   = 1,
+    SPLIT_L2   = 2
+} split_role_t;
+
+typedef struct {
+    split_role_t role;
+    char         local_pci[32];
+    char         peer_mac[32];
+    uint16_t     mtu;
+    int          rx_lcore_id;
+    char         local_memzone_name[32];
+    uint64_t     local_memzone_size;
+} split_config_t;
+#endif
+
+typedef struct {
+    int mode;
+    core_config_sim_mode_t core_config;
 } simulation_mode_t;
 
 typedef struct {
-    bool generate_log_file;
-    char log_file_path[256];
-    bool horizontal_level;
-} log_file_config_t;
+    bool xFAPI_log;
+    bool xSM_log;
+    bool P5_log;
+    bool P7_log;
+} horizontal_log_t;
 
 typedef struct {
-    char     vertical_level[16];
-    bool     print_config;
-    bool     print_datetime;
-    log_file_config_t log_file;
+    char vertical_level[16];
+    horizontal_log_t horizontal_level;
+    bool print_config;
+    bool print_datetime;
 } logging_config_t;
 
 typedef struct {
-    char          *app_name;
-    dpdk_config_t  dpdk_config;
-    logging_config_t logging;
+    bool generate_log_file;
+    int file_size;
+    char vertical_level[16];
+    horizontal_log_t horizontal_level;
+    bool print_datetime;
+    bool print_config;
+
+} log_file_config_t;
+
+typedef struct {
+    bool enabled;
+    char bind_ip[64];
+    int port;
+    int core_id;
+} dashboard_config_t;
+
+typedef struct {
+    bool generate_summary_file;
+    bool generate_detailed_file;
+    bool capture_ul_msgs;
+    bool capture_dl_msgs;
+    bool capture_p5_msgs;
+    bool capture_p7_msgs;
+} stats_file_generation_t;
+
+typedef struct {
+    char *app_name;
+    core_config_t core_config;
+    dpdk_config_t dpdk_config;
+    wls_config_t wls_config;
     simulation_mode_t simulation_mode;
-    xsm_endpoint_config_t xsm_l1;
-    xsm_endpoint_config_t xsm_l2;
-    forwarder_config_t    forwarder;
+    logging_config_t logging;
+    log_file_config_t log_file;
+    dashboard_config_t dashboard;
+    stats_file_generation_t stats_file_generation;
+#ifdef OCUDU_OCUDU
+    ocudu_xsm_endpoint_config_t   ocudu_xsm_l1;
+    ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
+    ocudu_forwarder_config_t      ocudu_forwarder;
+    split_config_t                split;
+#endif
 } xFAPI_Config;
 
 typedef struct {
-    int dpdk_config;
-    int logging;
+    bool core_id;
+    bool priority;
+    bool sched_policy;
+} task_config_flags_t;
+
+typedef struct {
+    task_config_flags_t rx_task;
+    task_config_flags_t tx_task;
+    task_config_flags_t xSM_recv_task;
+    task_config_flags_t dashboard_task;
+} core_config_flags_t;
+
+typedef struct {
+    task_config_flags_t rx_task;
+    task_config_flags_t tx_task;
+} core_config_sim_mode_flags_t;
+
+typedef struct {
+    bool dpdk_iova_mode;
+    bool dpdk_memory_zone;
+    bool dpdk_device_1;
+    bool dpdk_device_2;
+} dpdk_config_flags_t;
+
+typedef struct {
+    bool wls_device_name;
+    bool wls_mem_size;
+} wls_config_flags_t;
+
+typedef struct {
+    bool mode;
+    core_config_sim_mode_flags_t core_config;
+} simulation_mode_flags_t;
+
+typedef struct {
+    bool xFAPI_log;
+    bool xSM_log;
+    bool P5_log;
+    bool P7_log;
+} horizontal_log_flags_t;
+
+typedef struct {
+    bool vertical_level;
+    horizontal_log_flags_t horizontal_level;
+    bool print_config;
+    bool print_datetime;
+} logging_config_flags_t;
+
+typedef struct {
+    bool generate_log_file;
+    bool file_size;
+    bool vertical_level;
+    horizontal_log_flags_t horizontal_level;
+    bool print_datetime;
+    bool print_config;
+} log_file_config_flags_t;
+
+typedef struct {
+    bool enabled;
+    bool bind_ip;
+    bool port;
+    bool core_id;
+} dashboard_config_flags_t;
+
+typedef struct {
+    bool generate_summary_file;
+    bool generate_detailed_file;
+    bool capture_ul_msgs;
+    bool capture_dl_msgs;
+    bool capture_p5_msgs;
+    bool capture_p7_msgs;
+} stats_file_generation_flags_t;
+
+typedef struct {
+    core_config_flags_t core_config;
+    dpdk_config_flags_t dpdk_config;
+    wls_config_flags_t wls_config;
+    simulation_mode_flags_t simulation_mode;
+    logging_config_flags_t logging;
+    log_file_config_flags_t log_file;
+    dashboard_config_flags_t dashboard;
+    stats_file_generation_flags_t stats_file_generation;
 } xFAPI_ConfigFlags;
 
-#define _XFAPI_ "XFAPI"
-
-#endif /* COMMON_GLOBAL_H */
+#endif

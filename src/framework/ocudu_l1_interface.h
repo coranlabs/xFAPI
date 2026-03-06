@@ -12,18 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef L1_INTERFACE_H
-#define L1_INTERFACE_H
+#ifndef OCUDU_L1_INTERFACE_H
+#define OCUDU_L1_INTERFACE_H
 
-#include "../include/common_global.h"
+struct AppContext;
 
-typedef struct {
-    int (*init)(xFAPI_Config *config, void *ctx);
-    int (*send)(void *ctx, void *msg, int len);
-    int (*recv)(void *ctx, void *msg, int len);
-    void (*destroy)(void *ctx);
-} L1_Interface;
+typedef struct OCUDU_L1_Interface {
+    int  (*init)(struct AppContext* ctx);
+    int  (*send_msg)(struct AppContext* ctx, void* msg);
+    void (*destroy)(struct AppContext* ctx);
+} OCUDU_L1_Interface;
 
-const L1_Interface *get_l1_interface(void);
+const OCUDU_L1_Interface* get_ocudu_l1_interface(void);
 
-#endif /* L1_INTERFACE_H */
+#endif

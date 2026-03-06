@@ -26,6 +26,58 @@ void report_missing_critical_param(const char *param_name) {
     SM_Logs(LOG_CRTERR, _XFAPI_, "Missing critical config: %s\n", param_name);
 }
 
+#ifdef OCUDU_OCUDU
+
+void validate_and_fill_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
+    (void)flags;
+
+    if (config->ocudu_xsm_l1.device_name[0] == '\0') {
+        report_missing_critical_param("ocudu_xsm_l1.device_name");
+    }
+    if (config->ocudu_xsm_l1.memory_size == 0) {
+        report_missing_critical_param("ocudu_xsm_l1.memory_size");
+    }
+    if (config->ocudu_xsm_l2.device_name[0] == '\0') {
+        report_missing_critical_param("ocudu_xsm_l2.device_name");
+    }
+    if (config->ocudu_xsm_l2.memory_size == 0) {
+        report_missing_critical_param("ocudu_xsm_l2.memory_size");
+    }
+    if (config->ocudu_forwarder.sched_policy[0] == '\0') {
+        strncpy(config->ocudu_forwarder.sched_policy, "SCHED_OTHER",
+                sizeof(config->ocudu_forwarder.sched_policy) - 1);
+    }
+    if (config->ocudu_forwarder.priority < 0) {
+        config->ocudu_forwarder.priority = 0;
+    }
+    if (config->dpdk_config.dpdk_memory_zone[0] == '\0') {
+        report_missing_critical_param("dpdk_config.dpdk_memory_zone");
+    }
+}
+
+void print_config_table(const xFAPI_Config *config) {
+    SM_Logs(LOG_INFO, _XFAPI_, "===== OCUDU_OCUDU configuration =====");
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK file-prefix:       %s",
+            config->dpdk_config.dpdk_memory_zone);
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK iova-mode:         %s",
+            config->dpdk_config.dpdk_iova_mode == 0 ? "PA" : "VA");
+    SM_Logs(LOG_INFO, _XFAPI_, "xSM L1 memzone:         %s (%lu bytes)",
+            config->ocudu_xsm_l1.device_name,
+            (unsigned long)config->ocudu_xsm_l1.memory_size);
+    SM_Logs(LOG_INFO, _XFAPI_, "xSM L2 memzone:         %s (%lu bytes)",
+            config->ocudu_xsm_l2.device_name,
+            (unsigned long)config->ocudu_xsm_l2.memory_size);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd L1->L2 core:        %d",
+            config->ocudu_forwarder.l1_to_l2_core_id);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd L2->L1 core:        %d",
+            config->ocudu_forwarder.l2_to_l1_core_id);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd priority/policy:    %d / %s",
+            config->ocudu_forwarder.priority,
+            config->ocudu_forwarder.sched_policy);
+    SM_Logs(LOG_INFO, _XFAPI_, "=====================================");
+}
+
+#endif
 
 void validate_and_fill_sim_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
 
