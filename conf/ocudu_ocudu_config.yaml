@@ -1,0 +1,75 @@
+# =============================================================================
+# XFAPI configuration — OCUDU_OCUDU bridge mode
+# =============================================================================
+# See docs/BUILD_AND_RUN.md for prerequisites and startup order.
+
+# =============================================================================
+# DPDK configuration
+# =============================================================================
+# XFAPI runs as DPDK SECONDARY. It does not probe the NIC — OCUDU-L1
+# (PRIMARY) owns the NIC and mbuf pools. file-prefix must match OCUDU-L1's.
+dpdk_config:
+  dpdk_iova_mode: 0           # 0 = PA, 1 = VA. Must match L1's setting.
+  dpdk_memory_zone: "gnb0"    # Must match OCUDU-L1's --file-prefix.
+
+  # Parsed but ignored in OCUDU_OCUDU mode; left for YAML schema compatibility.
+  dpdk_device_1: "0000:00:00.0"
+  dpdk_device_2: "0000:00:00.0"
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L1 (pair 0)
+# =============================================================================
+ocudu_xsm_l1:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088     # ~2.18 GB
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L2 (pair 1)
+# =============================================================================
+ocudu_xsm_l2:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# Forwarder thread settings
+# =============================================================================
+ocudu_forwarder:
+  l1_to_l2_core_id: 15       # CPU pin for L1->L2 forwarder thread
+  l2_to_l1_core_id: 31       # CPU pin for L2->L1 forwarder thread
+  priority: 85
+  sched_policy: "SCHED_FIFO"
+
+# =============================================================================
+# Split mode
+# =============================================================================
+# Set role: L1 or L2 to run XFAPI in split mode (two hosts connected by a
+# dedicated NIC link). Leave role: none for the default single-host bridge.
+split:
+  role: none                       # none | L1 | L2
+
+  # Set when role != none: PCI BDF of THIS host's NIC port for the L1<->L2
+  # link, and MAC address of the PEER host's NIC port.
+  local_pci: "0000:00:00.0"
+  peer_mac:  "00:00:00:00:00:00"
+
+  mtu: 8192
+  rx_lcore_id: 14
+  local_memzone_name: "xsm_eth_local"
+  local_memzone_size: 268435456    # 256 MiB
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  vertical_level: "INFO"      # NONE | WARN | INFO | DEBUG
+  horizontal_level:
+    xFAPI_log: true
+    xSM_log: true
+    P5_log: false
+    P7_log: false
+  print_config: true
+  print_datetime: true
