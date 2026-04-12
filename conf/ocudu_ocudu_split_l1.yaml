@@ -1,0 +1,69 @@
+# =============================================================================
+# XFAPI configuration — split mode, L1 side
+# =============================================================================
+# See docs/BUILD_AND_RUN.md for prerequisites and startup order.
+
+# =============================================================================
+# DPDK configuration
+# =============================================================================
+dpdk_config:
+  dpdk_iova_mode: 0           # 0 = PA. Must match OCUDU-L1's --iova-mode.
+  dpdk_memory_zone: "gnb0"    # Must match OCUDU-L1's --file-prefix.
+
+  # Ignored in OCUDU_OCUDU mode; left here for YAML schema compatibility.
+  dpdk_device_1: "0000:00:00.0"
+  dpdk_device_2: "0000:00:00.0"
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L1 (pair 0)
+# =============================================================================
+# In split mode this is the only local memzone-xSM handle.
+ocudu_xsm_l1:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L2 — IGNORED in split mode
+# =============================================================================
+# Kept for YAML schema compatibility.
+ocudu_xsm_l2:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# Forwarder thread settings
+# =============================================================================
+ocudu_forwarder:
+  l1_to_l2_core_id: 15       # local->network forwarder pin
+  l2_to_l1_core_id: 31       # network->local forwarder pin
+  priority: 85
+  sched_policy: "SCHED_FIFO"
+
+# =============================================================================
+# Split mode — THIS server is the L1 side
+# =============================================================================
+split:
+  role: L1
+  local_pci: "0000:00:00.0"        # set to THIS host's NIC PCI BDF
+  peer_mac:  "00:00:00:00:00:00"   # set to PEER host's NIC MAC address
+  mtu: 8192
+  rx_lcore_id: 14
+  local_memzone_name: "xsm_eth_local"
+  local_memzone_size: 268435456    # 256 MiB
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  vertical_level: "INFO"
+  horizontal_level:
+    xFAPI_log: true
+    xSM_log: true
+    P5_log: false
+    P7_log: false
+  print_config: true
+  print_datetime: true
