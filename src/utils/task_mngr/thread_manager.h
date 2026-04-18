@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
 #ifndef THREAD_MANAGER_H
 #define THREAD_MANAGER_H
 #include "unified_logger.h"
@@ -29,6 +30,7 @@ uint8_t create_managed_thread(
     void *arg,
     const char *name,
     int core_id,
-    int priority);
+    int priority,
+    const char *sched_policy);
 
 #endif
