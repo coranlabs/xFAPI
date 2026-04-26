@@ -24,7 +24,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List, Optional, Dict, Any
-import html
 import json
 import logging
 import os
@@ -33,7 +32,7 @@ import time
 from datetime import datetime
 import uvicorn
 
-def _e(s) -> str:
+def str(s) -> str:
     """HTML-escape a value before embedding in a content_preview string.
     Captured 5G messages can contain arbitrary bytes including <, >, &, ", '
     which would be interpreted as HTML by the dashboard. All values that
@@ -42,6 +41,13 @@ def _e(s) -> str:
     return html.escape("" if s is None else str(s), quote=True)
 
 
+def _path_override_allowed() -> bool:
+    """Path-override endpoints (/api/load-path, /api/validate-path) let any
+    caller probe the server's filesystem and force the dashboard to read
+    arbitrary JSON. They're off by default. Set XFAPI_ALLOW_PATH_OVERRIDE=1
+    in the server's environment to opt back in (only safe behind a trusted
+    reverse proxy)."""
+    return os.environ.get("XFAPI_ALLOW_PATH_OVERRIDE", "0") == "1"
 
 
 def _path_root() -> str:
@@ -616,7 +622,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         pdu_type_line = message_content[start:end].strip()
                         value = pdu_type_line.split("=")[1] if "=" in pdu_type_line else ""
-                        preview_parts.append(f'type:{_e(value)}')
+                        preview_parts.append(f'type:{str(value)}')
             
             # Extract sr_indication
             if 'sr_indication=' in message_content:
@@ -627,7 +633,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         sr_indication = message_content[start:end].strip()
                         value = sr_indication.split("=")[1] if "=" in sr_indication else ""
                         color_class = 'uci-value-0' if value == '0' else 'uci-value-1'
-                        preview_parts.append(f'sr_ind=<span class="{_e(color_class)}">{_e(value)}</span>')
+                        preview_parts.append(f'sr_ind=<span class="{str(color_class)}">{str(value)}</span>')
             
             # Extract sr_confidence_level
             if 'sr_confidence_level=' in message_content:
@@ -638,7 +644,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         sr_confidence = message_content[start:end].strip()
                         value = sr_confidence.split("=")[1] if "=" in sr_confidence else ""
                         color_class = 'uci-value-0' if value == '0' else 'uci-value-1'
-                        preview_parts.append(f'sr_con=<span class="{_e(color_class)}">{_e(value)}</span>')
+                        preview_parts.append(f'sr_con=<span class="{str(color_class)}">{str(value)}</span>')
             
             # Extract harq[0].harq_value (new field) - display before harq_confidence
             if 'harq[0].harq_value=' in message_content:
@@ -649,7 +655,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         harq_value = message_content[start:end].strip()
                         value = harq_value.split("=")[1] if "=" in harq_value else ""
                         color_class = 'uci-value-0' if value == '0' else 'uci-value-1'
-                        preview_parts.append(f'hrq_val=<span class="{_e(color_class)}">{_e(value)}</span>')
+                        preview_parts.append(f'hrq_val=<span class="{str(color_class)}">{str(value)}</span>')
             
             # Extract harq_confidence_level
             if 'harq_confidence_level=' in message_content:
@@ -660,9 +666,9 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         harq_confidence = message_content[start:end].strip()
                         value = harq_confidence.split("=")[1] if "=" in harq_confidence else ""
                         color_class = 'uci-value-0' if value == '0' else 'uci-value-1'
-                        preview_parts.append(f'hrq_con=<span class="{_e(color_class)}">{_e(value)}</span>')
+                        preview_parts.append(f'hrq_con=<span class="{str(color_class)}">{str(value)}</span>')
             
-            return ', '.join(preview_parts) if preview_parts else (_e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content))
+            return ', '.join(preview_parts) if preview_parts else (str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content))
         
         elif message_type == 'RX_DATA_INDICATION':
             # Extract some bytes of 0th rx_pdu->pdu if data_hex is present
@@ -679,7 +685,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         hex_bytes = hex_data.replace('data_hex=', '').strip()
                         if hex_bytes:  # Only if there's actual hex data
                             first_bytes = ' '.join(hex_bytes.split()[:16])  # First 16 bytes
-                            preview_parts.append(f'{_e(first_bytes)}...')
+                            preview_parts.append(f'{str(first_bytes)}...')
             
             # If no hex data found, show pdu_length info
             if not preview_parts and 'pdu_length=' in message_content:
@@ -688,9 +694,9 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     end = message_content.find('\n', start)
                     if end != -1:
                         pdu_length_line = message_content[start:end].strip()
-                        preview_parts.append(_e(pdu_length_line))
+                        preview_parts.append(str(pdu_length_line))
             
-            return ', '.join(preview_parts) if preview_parts else (_e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content))
+            return ', '.join(preview_parts) if preview_parts else (str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content))
         
         elif message_type.startswith('UL_TTI_REQUEST') and 'PUSCH' in message_type:
             # Extract MCS index, MCS table, and TB size for UL TTI messages with PUSCH
@@ -704,7 +710,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         mcs_index_line = message_content[start:end].strip()
                         value = mcs_index_line.split("=")[1] if "=" in mcs_index_line else ""
-                        preview_parts.append(f'mcs_idx={_e(value)}')
+                        preview_parts.append(f'mcs_idx={str(value)}')
             
             # Extract mcs_table
             if 'mcs_table=' in message_content:
@@ -714,7 +720,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         mcs_table_line = message_content[start:end].strip()
                         value = mcs_table_line.split("=")[1] if "=" in mcs_table_line else ""
-                        preview_parts.append(f'mcs_tbl={_e(value)}')
+                        preview_parts.append(f'mcs_tbl={str(value)}')
             
             # Extract tb_size
             if 'tb_size=' in message_content:
@@ -724,9 +730,9 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         tb_size_line = message_content[start:end].strip()
                         value = tb_size_line.split("=")[1] if "=" in tb_size_line else ""
-                        preview_parts.append(f'tb_size={_e(value)}')
+                        preview_parts.append(f'tb_size={str(value)}')
             
-            return ', '.join(preview_parts) if preview_parts else (_e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content))
+            return ', '.join(preview_parts) if preview_parts else (str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content))
         
         elif message_type.startswith('UL_DCI_REQUEST') and 'PDCCH' in message_type:
             # Extract CceIndex, AggregationLevel, RegBundleSize, and StartSymbolIndex for UL DCI messages with PDCCH
@@ -740,7 +746,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         cce_index_line = message_content[start:end].strip()
                         value = cce_index_line.split("=")[1] if "=" in cce_index_line else ""
-                        preview_parts.append(f'CceIdx={_e(value)}')
+                        preview_parts.append(f'CceIdx={str(value)}')
             
             # Extract AggregationLevel
             if 'AggregationLevel=' in message_content:
@@ -750,7 +756,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         aggr_level_line = message_content[start:end].strip()
                         value = aggr_level_line.split("=")[1] if "=" in aggr_level_line else ""
-                        preview_parts.append(f'Aggr.Lvl={_e(value)}')
+                        preview_parts.append(f'Aggr.Lvl={str(value)}')
             
             # Extract RegBundleSize
             if 'RegBundleSize=' in message_content:
@@ -760,7 +766,7 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         reg_bundle_line = message_content[start:end].strip()
                         value = reg_bundle_line.split("=")[1] if "=" in reg_bundle_line else ""
-                        preview_parts.append(f'RegBndlSz={_e(value)}')
+                        preview_parts.append(f'RegBndlSz={str(value)}')
             
             # Extract StartSymbolIndex
             if 'StartSymbolIndex=' in message_content:
@@ -770,9 +776,9 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                     if end != -1:
                         start_symbol_line = message_content[start:end].strip()
                         value = start_symbol_line.split("=")[1] if "=" in start_symbol_line else ""
-                        preview_parts.append(f'StartSymIdx={_e(value)}')
+                        preview_parts.append(f'StartSymIdx={str(value)}')
             
-            return ', '.join(preview_parts) if preview_parts else (_e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content))
+            return ', '.join(preview_parts) if preview_parts else (str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content))
         
         elif message_type == 'TX_DATA_REQUEST':
             # Extract hex bytes from pdu_list[0].TLVs[0].value.direct
@@ -789,13 +795,13 @@ def generate_custom_content_preview(message: Dict[str, Any]) -> str:
                         hex_bytes = hex_data.replace('TLV[0].data_hex=', '').strip()
                         if hex_bytes:  # Only if there's actual hex data
                             first_bytes = ' '.join(hex_bytes.split()[:16])  # First 16 bytes
-                            preview_parts.append(f'{_e(first_bytes)}...')
+                            preview_parts.append(f'{str(first_bytes)}...')
             
-            return ', '.join(preview_parts) if preview_parts else (_e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content))
+            return ', '.join(preview_parts) if preview_parts else (str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content))
     
         else:
             # For all other message types, keep existing content preview
-            return _e(message_content[:100]) + "..." if len(message_content) > 100 else _e(message_content)
+            return str(message_content[:100]) + "..." if len(message_content) > 100 else str(message_content)
     
     except Exception as e:
         # In case of any error, fall back to default preview
