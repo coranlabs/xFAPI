@@ -1,0 +1,17 @@
+coRAN LABS Open Source Project
+Copyright 2024–2026 coRAN LABS Private Limited
+
+This product includes software originally designed and developed by coRAN LABS Private Limited.
+
+STRICT ATTRIBUTION REQUIREMENTS:
+In accordance with Section 4(d) of the Apache License, Version 2.0, any individual or entity utilizing, redistributing, or creating derivative works from this software, in whole or in part, MUST preserve this NOTICE file in its entirety.
+
+Furthermore, you MUST provide prominent, visible attribution to coRAN LABS Private Limited in the following locations:
+
+    Documentation: In any accompanying technical documentation, README files, user manuals, or release notes.
+
+    User Interfaces: Within the graphical or command-line interface of any deployed derivative software (e.g., within an "About," "Legal," or "Credits" screen) wherever third-party acknowledgments are typically displayed.
+
+    Source Code: By maintaining the original copyright headers in all unmodified source files.
+
+This attribution must be clear and legible. It must not be presented in a way that implies coRAN LABS Private Limited endorses, sponsors, or guarantees your specific derivative work without explicit, prior written consent.
