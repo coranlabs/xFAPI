@@ -69,3 +69,7 @@ src/dashboard/client/dist/
 # Dev scripts
 .logs.sh
 .logs_old.sh
+
+# Frontend build artifacts
+src/dashboard/client/node_modules/
+src/dashboard/client/dist/
