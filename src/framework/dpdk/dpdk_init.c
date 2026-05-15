@@ -13,30 +13,50 @@
 // limitations under the License.
 
 #include "dpdk_init.h"
-#include "unified_logger.h"
+#include "rte_memzone.h"
 #include <rte_eal.h>
-#include <string.h>
 
-int dpdk_init_bridge(xFAPI_Config *config)
+#ifdef OCUDU_OCUDU
+
+uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
 {
-    const char *prefix = config->dpdk_config.dpdk_memory_zone;
-    SM_Logs(LOG_INFO, _XFAPI_, "[BRIDGE] DPDK file-prefix: %s", prefix);
+    SM_Logs(LOG_DEBUG, _XFAPI_,
+            "[OCUDU_BRIDGE] DPDK file-prefix: %s",
+            g_config->dpdk_config.dpdk_memory_zone);
 
-    char proc_type[]    = "--proc-type=secondary";
-    char file_prefix[]  = "--file-prefix";
-    char no_pci[]       = "--no-pci";
-    char iova[]         = "--iova-mode=pa";
-    char prefix_val[64];
-    strncpy(prefix_val, prefix, sizeof(prefix_val) - 1);
-    prefix_val[sizeof(prefix_val) - 1] = '\0';
+    char *const file_prefix = g_config->dpdk_config.dpdk_memory_zone;
+    char iova_mode[64];
 
-    char *eal_argv[] = { "xfapi", proc_type, file_prefix, prefix_val, no_pci, iova };
-    int   eal_argc  = 6;
+    if (g_config->dpdk_config.dpdk_iova_mode == 0)
+        snprintf(iova_mode, sizeof(iova_mode), "--iova-mode=pa");
+    else
+        snprintf(iova_mode, sizeof(iova_mode), "--iova-mode=va");
 
-    if (rte_eal_init(eal_argc, eal_argv) < 0) {
-        SM_Logs(LOG_CRTERR, _XFAPI_, "[BRIDGE] rte_eal_init failed.");
-        return -1;
+    char *argv[] = {
+        g_config->app_name,
+        "--proc-type=secondary",
+        "--file-prefix", file_prefix,
+        "--no-pci",
+        iova_mode,
+    };
+    int argc = (int)RTE_DIM(argv);
+
+    SM_Logs(LOG_INFO, _XFAPI_, "[OCUDU_BRIDGE] DPDK EAL args:");
+    for (int i = 1; i < argc; i++) {
+        SM_Logs(LOG_INFO, _XFAPI_, "  %s", argv[i]);
     }
-    SM_Logs(LOG_INFO, _XFAPI_, "[BRIDGE] DPDK EAL attached as SECONDARY on file-prefix=%s.", prefix);
-    return 0;
+
+    if (rte_eal_init(argc, argv) < 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_,
+                "[OCUDU_BRIDGE] rte_eal_init failed. "
+                "Is OCUDU-L1 (DPDK PRIMARY on file-prefix=%s) running yet?",
+                file_prefix);
+        return FAILURE;
+    }
+
+    SM_Logs(LOG_INFO, _XFAPI_,
+            "[OCUDU_BRIDGE] DPDK EAL attached as SECONDARY on file-prefix=%s.",
+            file_prefix);
+    return SUCCESS;
 }
+#endif

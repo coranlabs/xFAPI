@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef DPDK_INIT_H
-#define DPDK_INIT_H
+#ifndef XFAPI_DPDK_INIT_H_
+#define XFAPI_DPDK_INIT_H_
 
-#include "../include/common_global.h"
+#include "unified_logger.h"
+#include "../../utils/config/yaml_config.h"
 
-int dpdk_init_bridge(xFAPI_Config *config);
+uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config);
 
-#endif /* DPDK_INIT_H */
+#endif
