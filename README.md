@@ -109,16 +109,20 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 
 ## References
 
-| **Topic**             | **Type**     | **Links**                                                                                                                                                                                                                                                                                                                                                               |
-| --------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| xFAPI Release 2.1     | Video        | [Watch](https://youtu.be/kV70QQgc0H8?si=yOc5sVaJSj85WJPC)                                                                                                                                                                                                                                                                                                               |
-| Introduction to xFAPI | Video        | [Watch](https://youtu.be/1oO_DIiZfug?si=m9HwykFD4aMxpYi7)                                                                                                                                                                                                                                                                                                               |
-| xFAPI Proposal        | Presentation | [View](https://wiki.o-ran-sc.org/download/attachments/78217260/xFAPI%20Proposal.pdf?api=v2)                                                                                                                                                                                                                                                                             |
-|                       | Recording    | [Watch](https://zoom.us/rec/play/G54aZjpA34mBBkagXaHKS2-czoy8oEQ8m7bPI7vaKgSvH1UGqwSx0bx3uF7Bb37RRgQpOp1f-4v4Wo0i.KJt64HspDhWl75ov?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2F-ZFH16_eVRto4atlwUE6l77dKtoJj53_bfZvZ3wgWWI9nDJc3dvZZiK-A5v-5Nrh.PyEgerJdoNW9qQbR) |
-| xFAPI Blueprint       | Presentation | [View](https://wiki.o-ran-sc.org/download/attachments/78217260/xFAPI%20Blueprint.pdf?api=v2)                                                                                                                                                                                                                                                                            |
-|                       | Recording    | [Watch](https://zoom.us/rec/play/deV06o9uQO1JlMRg93UIJHh6CYleU8OeYPl11zRVZkdiYKycdQWwnArWUvwIJdOmH1jVVh151063WRKW.UR4vegH8q1lK3187?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2FwmQNLvP9c1nOTzGHQsoaA7zP-lgwFO0XUW2OWIcTC2KtBNAIOIKlwib6pvvpENiD.Rkmvy2QyiMAk-bT1) |
-|xFAPI Deployment Guide- O-RAN-SC K-Release| Doc    | [View](https://lf-o-ran-sc.atlassian.net/wiki/spaces/IAT/pages/176226489/xFAPI+Deployment+Guideline) |
-|xFAPI Deployment in O-RAN-SC Lab,Taiwan| Video    | [Watch](https://www.youtube.com/watch?v=sXFv2xor5pg) |
+| **Topic** | **Type** | **Links** |
+|------------|------------|------------|
+| xFAPI Release 2.1 | Video | [Watch](https://youtu.be/qoYfgLS7yMw?si=PSK6jaUvtFNTJcAA) |
+| Introduction to xFAPI | Video | [Watch](https://youtu.be/1oO_DIiZfug?si=m9HwykFD4aMxpYi7) |
+| xFAPI Proposal | Presentation | [View](https://wiki.o-ran-sc.org/download/attachments/78217260/xFAPI%20Proposal.pdf?api=v2) |
+|  | Recording | [Watch](https://zoom.us/rec/play/G54aZjpA34mBBkagXaHKS2-czoy8oEQ8m7bPI7vaKgSvH1UGqwSx0bx3uF7Bb37RRgQpOp1f-4v4Wo0i.KJt64HspDhWl75ov?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2F-ZFH16_eVRto4atlwUE6l77dKtoJj53_bfZvZ3wgWWI9nDJc3dvZZiK-A5v-5Nrh.PyEgerJdoNW9qQbR) |
+| xFAPI Blueprint | Presentation | [View](https://wiki.o-ran-sc.org/download/attachments/78217260/xFAPI%20Blueprint.pdf?api=v2) |
+|  | Recording | [Watch](https://zoom.us/rec/play/deV06o9uQO1JlMRg93UIJHh6CYleU8OeYPl11zRVZkdiYKycdQWwnArWUvwIJdOmH1jVVh151063WRKW.UR4vegH8q1lK3187?canPlayFromShare=true&from=share_recording_detail&continueMode=true&componentName=rec-play&originRequestUrl=https%3A%2F%2Fzoom.us%2Frec%2Fshare%2FwmQNLvP9c1nOTzGHQsoaA7zP-lgwFO0XUW2OWIcTC2KtBNAIOIKlwib6pvvpENiD.Rkmvy2QyiMAk-bT1) |
+| xFAPI with OCUDU | Video | [Watch](https://youtu.be/ToUYOI_kL0Q?si=u0AXsvNkFEaB_Smn) |
+|  | Blog | [Read](https://docs.ocuduindia.org/blog/2026/05/19/xfapi-ocudu-fapi-split/) |
+|  | Documentation | [View](https://docs.ocuduindia.org/docs/fapi-split/xfapi-bridge/) |
+| xFAPI Deployment Guide – O-RAN-SC K-Release | Documentation | [View](https://lf-o-ran-sc.atlassian.net/wiki/spaces/IAT/pages/176226489/xFAPI+Deployment+Guideline) |
+| xFAPI Deployment in O-RAN-SC Lab, Taiwan | Video | [Watch](https://www.youtube.com/watch?v=sXFv2xor5pg) |
+
 
 ## Acknowledgements
 
