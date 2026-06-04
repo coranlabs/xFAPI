@@ -20,7 +20,10 @@
 #include "unified_logger.h"
 #include "../framework/ocudu_l1_interface.h"
 #include "../framework/ocudu_l2_interface.h"
-#ifdef OCUDU_OCUDU
+#ifdef OAI_OCUDU
+#include "../framework/oai_l1_interface.h"
+#endif
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
 #include "xsm/xsm.h"
 #include <stdbool.h>
 #include <stdatomic.h>
@@ -59,6 +62,39 @@ typedef struct {
 } OCUDUContext;
 #endif
 
+#ifdef OAI_OCUDU
+
+/* Opaque VNF state, defined in core/OAI_OCUDU/oai_vnf.h. Forward-declared
+ * here so AppContext can hold a pointer without pulling nFAPI headers into
+ * every translation unit that includes app_context.h. */
+struct oai_vnf;
+
+typedef struct {
+    /* xSM handle toward OCUDU-L2 (pair 1). xFAPI owns the memzone (the role
+     * OCUDU-L1 plays in OCUDU_OCUDU) and is SLAVE on pair 1; OCUDU-L2
+     * attaches as MASTER on pair 1. */
+    xsm_handle_t* h_l2;
+    void*         region_l2;
+
+    /* nFAPI VNF runtime state (P5 SCTP + P7 UDP + handshake + threads). */
+    struct oai_vnf* vnf;
+
+    /* Queue handing received P7 RX items from the P7 listener thread to the
+     * rx_task thread. Carries oai_p7_rx_item_t*. */
+    ITC_Queue_t   p7_rx_queue;
+
+    /* L2->OAI forwarder thread: drains the OCUDU-L2 xSM queue and sends the
+     * resulting nFAPI message to the PNF. */
+    pthread_t     fwd_l2_to_oai_tid;
+    atomic_int    fwd_l2_to_oai_running;
+
+    /* Background thread that waits (observability only) for OCUDU-L2 to
+     * attach on pair 1, so the VNF can come up without gating on L2. */
+    pthread_t     l2_peer_wait_tid;
+    int           l2_peer_wait_started;
+} OAIOCUDUContext;
+#endif
+
 typedef struct AppContext {
     xFAPI_Config config;
     xFAPI_ConfigFlags config_flags;
@@ -68,6 +104,12 @@ typedef struct AppContext {
     OCUDUContext ocudu_ctx;
     const OCUDU_L1_Interface* ocudu_l1_ctx;
     const OCUDU_L2_Interface* ocudu_l2_ctx;
+#endif
+
+#ifdef OAI_OCUDU
+    OAIOCUDUContext           oai_ocudu_ctx;
+    const OAI_L1_Interface*   oai_l1_ctx;
+    const OCUDU_L2_Interface* ocudu_l2_ctx;   /* L2 is still OCUDU; reuse vtable */
 #endif
 
     int is_running;

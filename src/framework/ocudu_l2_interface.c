@@ -26,7 +26,7 @@
 
 #include "ocudu_l2_interface.h"
 
-#ifdef OCUDU_OCUDU
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
 
 #include "../main/app_context.h"
 #include "unified_logger.h"

@@ -1,0 +1,78 @@
+# =============================================================================
+# XFAPI configuration — OAI_OCUDU bridge mode
+# =============================================================================
+# Bridges OAI L1 (nFAPI over UDP sockets) with OCUDU L2 (xSM shared memory).
+#
+# Topology (single host):
+#   OAI L1  <--UDP nFAPI (P5/P7)-->  XFAPI  <--xSM pair 1-->  OCUDU-L2
+#
+# XFAPI owns the "xsm_bridge" memzone (the role OCUDU-L1 plays in
+# OCUDU_OCUDU): it is DPDK PRIMARY on the file-prefix and xSM SLAVE on
+# pair 1. OCUDU-L2 attaches as DPDK SECONDARY + xSM MASTER on pair 1.
+#
+# Startup order: start XFAPI first (it creates the memzone), then OCUDU-L2.
+
+# =============================================================================
+# DPDK configuration
+# =============================================================================
+# XFAPI is the DPDK PRIMARY here (OAI is on UDP, not DPDK). file-prefix must
+# match the prefix OCUDU-L2 attaches to.
+dpdk_config:
+  dpdk_iova_mode: 0           # 0 = PA, 1 = VA. Must match OCUDU-L2's setting.
+  dpdk_memory_zone: "gnb0"    # DPDK --file-prefix shared with OCUDU-L2.
+
+  # Parsed but ignored in OAI_OCUDU mode; left for YAML schema compatibility.
+  dpdk_device_1: "0000:00:00.0"
+  dpdk_device_2: "0000:00:00.0"
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L2 (pair 1)
+# =============================================================================
+ocudu_xsm_l2:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088     # ~2.18 GB
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# nFAPI socket configuration (toward OAI L1)
+# =============================================================================
+# XFAPI binds local_ip:*_local_port and sends to remote_ip:*_remote_port.
+# Must mirror OAI PNF conf (gnb-pnf.band78.liteon.conf) — xFAPI is the VNF:
+#   OAI local_n_address=127.0.0.1 (PNF)   -> our remote_ip
+#   OAI remote_n_address=127.0.0.1 (VNF)  -> our local_ip
+#   OAI local_n_portc=50000 (PNF P5)      -> our p5_remote_port
+#   OAI remote_n_portc=50001 (VNF P5)     -> our p5_local_port (we listen here)
+#   OAI local_n_portd=50010 (PNF P7)      -> our p7_remote_port
+#   OAI remote_n_portd=50011 (VNF P7)     -> our p7_local_port (we bind here)
+nfapi_socket:
+  remote_ip: "127.0.0.1"       # OAI L1 (PNF) address
+  local_ip:  "127.0.0.1"       # this xFAPI (VNF) address
+  p5_remote_port: 50000        # PNF P5 (OAI local_n_portc)
+  p5_local_port:  50001        # VNF P5 — we listen here (OAI remote_n_portc)
+  p7_remote_port: 50010        # PNF P7 (OAI local_n_portd)
+  p7_local_port:  50011        # VNF P7 — we bind here (OAI remote_n_portd)
+  enable_checksum: true
+
+# =============================================================================
+# Forwarder thread settings
+# =============================================================================
+# recv = OAI->L2 (socket recv -> xSM put); send = L2->OAI (xSM get -> socket send).
+oai_forwarder:
+  recv_core_id: 7
+  send_core_id: 8
+  priority: 85
+  sched_policy: "SCHED_FIFO"
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  vertical_level: "DEBUG"     # NONE | WARN | INFO | DEBUG
+  horizontal_level:
+    xFAPI_log: true
+    xSM_log: true
+    P5_log: true
+    P7_log: true
+  print_config: true
+  print_datetime: true

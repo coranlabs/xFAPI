@@ -84,7 +84,7 @@ typedef struct {
     uint64_t wls_shmem_size;
 } wls_config_t;
 
-#ifdef OCUDU_OCUDU
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
 
 typedef struct {
     char     device_name[64];
@@ -92,6 +92,10 @@ typedef struct {
     uint32_t queue_capacity;
     uint32_t return_queue_capacity;
 } ocudu_xsm_endpoint_config_t;
+
+#endif
+
+#ifdef OCUDU_OCUDU
 
 typedef struct {
     int  l1_to_l2_core_id;
@@ -121,6 +125,31 @@ typedef struct {
     char         local_memzone_name[32];
     uint64_t     local_memzone_size;
 } split_config_t;
+#endif
+
+#ifdef OAI_OCUDU
+
+/* UDP socket endpoints toward OAI L1 (nFAPI P5/P7). xFAPI binds the
+ * local_ip:*_local_port pairs and sends to remote_ip:*_remote_port. */
+typedef struct {
+    bool ipv6_enabled;
+    char remote_ip[64];
+    char local_ip[64];
+    int  p5_remote_port;
+    int  p5_local_port;
+    int  p7_remote_port;
+    int  p7_local_port;
+    bool checksum_enabled;
+} nfapi_socket_t;
+
+/* Forwarder thread settings for the OAI_OCUDU bridge. recv = OAI->L2
+ * (socket recv -> xSM), send = L2->OAI (xSM -> socket send). */
+typedef struct {
+    int  recv_core_id;
+    int  send_core_id;
+    int  priority;
+    char sched_policy[20];
+} oai_forwarder_config_t;
 #endif
 
 typedef struct {
@@ -183,6 +212,11 @@ typedef struct {
     ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
     ocudu_forwarder_config_t      ocudu_forwarder;
     split_config_t                split;
+#endif
+#ifdef OAI_OCUDU
+    ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
+    nfapi_socket_t                nfapi_socket;
+    oai_forwarder_config_t        oai_forwarder;
 #endif
 } xFAPI_Config;
 

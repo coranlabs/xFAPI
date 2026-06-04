@@ -79,6 +79,62 @@ void print_config_table(const xFAPI_Config *config) {
 
 #endif
 
+#ifdef OAI_OCUDU
+
+void validate_and_fill_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
+    (void)flags;
+
+    if (config->ocudu_xsm_l2.device_name[0] == '\0') {
+        report_missing_critical_param("ocudu_xsm_l2.device_name");
+    }
+    if (config->ocudu_xsm_l2.memory_size == 0) {
+        report_missing_critical_param("ocudu_xsm_l2.memory_size");
+    }
+    if (config->nfapi_socket.local_ip[0] == '\0') {
+        report_missing_critical_param("nfapi_socket.local_ip");
+    }
+    if (config->nfapi_socket.remote_ip[0] == '\0') {
+        report_missing_critical_param("nfapi_socket.remote_ip");
+    }
+    if (config->nfapi_socket.p7_local_port == 0) {
+        report_missing_critical_param("nfapi_socket.p7_local_port");
+    }
+    if (config->oai_forwarder.sched_policy[0] == '\0') {
+        strncpy(config->oai_forwarder.sched_policy, "SCHED_OTHER",
+                sizeof(config->oai_forwarder.sched_policy) - 1);
+    }
+    if (config->oai_forwarder.priority < 0) {
+        config->oai_forwarder.priority = 0;
+    }
+    if (config->dpdk_config.dpdk_memory_zone[0] == '\0') {
+        report_missing_critical_param("dpdk_config.dpdk_memory_zone");
+    }
+}
+
+void print_config_table(const xFAPI_Config *config) {
+    SM_Logs(LOG_INFO, _XFAPI_, "===== OAI_OCUDU configuration =====");
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK file-prefix:       %s",
+            config->dpdk_config.dpdk_memory_zone);
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK iova-mode:         %s",
+            config->dpdk_config.dpdk_iova_mode == 0 ? "PA" : "VA");
+    SM_Logs(LOG_INFO, _XFAPI_, "xSM L2 memzone:         %s (%lu bytes)",
+            config->ocudu_xsm_l2.device_name,
+            (unsigned long)config->ocudu_xsm_l2.memory_size);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI local  ip:        %s", config->nfapi_socket.local_ip);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI remote ip:        %s", config->nfapi_socket.remote_ip);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P5 local/remote:  %d / %d",
+            config->nfapi_socket.p5_local_port, config->nfapi_socket.p5_remote_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P7 local/remote:  %d / %d",
+            config->nfapi_socket.p7_local_port, config->nfapi_socket.p7_remote_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd recv/send core:     %d / %d",
+            config->oai_forwarder.recv_core_id, config->oai_forwarder.send_core_id);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd priority/policy:    %d / %s",
+            config->oai_forwarder.priority, config->oai_forwarder.sched_policy);
+    SM_Logs(LOG_INFO, _XFAPI_, "===================================");
+}
+
+#endif
+
 void validate_and_fill_sim_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
 
     if (!flags->simulation_mode.core_config.rx_task.core_id){

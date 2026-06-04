@@ -324,7 +324,7 @@ void parse_wls_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigF
     }
 }
 
-#ifdef OCUDU_OCUDU
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
 
 static void parse_ocudu_xsm_endpoint_config(yaml_parser_t *parser,
                                             ocudu_xsm_endpoint_config_t *ep) {
@@ -379,6 +379,10 @@ static void parse_ocudu_xsm_endpoint_config(yaml_parser_t *parser,
         yaml_event_delete(&event);
     }
 }
+
+#endif /* OCUDU_OCUDU || OAI_OCUDU */
+
+#ifdef OCUDU_OCUDU
 
 void parse_ocudu_xsm_l1_config(yaml_parser_t *parser, xFAPI_Config *config,
                                 xFAPI_ConfigFlags *config_flags) {
@@ -449,6 +453,138 @@ void parse_ocudu_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
     }
 }
 #endif
+
+#ifdef OAI_OCUDU
+
+void parse_ocudu_xsm_l2_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    parse_ocudu_xsm_endpoint_config(parser, &config->ocudu_xsm_l2);
+}
+
+void parse_nfapi_socket_config(yaml_parser_t *parser, xFAPI_Config *config,
+                               xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in nfapi_socket\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "remote_ip") == 0) {
+                        strncpy(config->nfapi_socket.remote_ip, val,
+                                sizeof(config->nfapi_socket.remote_ip) - 1);
+                        config->nfapi_socket.remote_ip[sizeof(config->nfapi_socket.remote_ip) - 1] = '\0';
+                    } else if (strcmp(current_key, "local_ip") == 0) {
+                        strncpy(config->nfapi_socket.local_ip, val,
+                                sizeof(config->nfapi_socket.local_ip) - 1);
+                        config->nfapi_socket.local_ip[sizeof(config->nfapi_socket.local_ip) - 1] = '\0';
+                    } else if (strcmp(current_key, "p5_remote_port") == 0) {
+                        config->nfapi_socket.p5_remote_port = atoi(val);
+                    } else if (strcmp(current_key, "p5_local_port") == 0) {
+                        config->nfapi_socket.p5_local_port = atoi(val);
+                    } else if (strcmp(current_key, "p7_remote_port") == 0) {
+                        config->nfapi_socket.p7_remote_port = atoi(val);
+                    } else if (strcmp(current_key, "p7_local_port") == 0) {
+                        config->nfapi_socket.p7_local_port = atoi(val);
+                    } else if (strcmp(current_key, "enable_checksum") == 0) {
+                        config->nfapi_socket.checksum_enabled = parse_yaml_bool(val);
+                    } else if (strcmp(current_key, "ipv6_enabled") == 0) {
+                        config->nfapi_socket.ipv6_enabled = parse_yaml_bool(val);
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_nfapi_socket_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+
+void parse_oai_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in oai_forwarder\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "recv_core_id") == 0) {
+                        config->oai_forwarder.recv_core_id = atoi(val);
+                    } else if (strcmp(current_key, "send_core_id") == 0) {
+                        config->oai_forwarder.send_core_id = atoi(val);
+                    } else if (strcmp(current_key, "priority") == 0) {
+                        config->oai_forwarder.priority = atoi(val);
+                    } else if (strcmp(current_key, "sched_policy") == 0) {
+                        strncpy(config->oai_forwarder.sched_policy, val,
+                                sizeof(config->oai_forwarder.sched_policy) - 1);
+                        config->oai_forwarder.sched_policy[
+                            sizeof(config->oai_forwarder.sched_policy) - 1] = '\0';
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_oai_forwarder_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+#endif /* OAI_OCUDU */
 
 void parse_simulation_mode_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigFlags *config_flags) {
     yaml_event_t event;
@@ -888,6 +1024,18 @@ int parse_yaml_main(const char *filename, AppContext *app_ctx) {
                         expecting_key = 1;
                     } else if (strcmp(current_top_key, "ocudu_forwarder") == 0) {
                         parse_ocudu_forwarder_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    }
+#endif
+#ifdef OAI_OCUDU
+                    else if (strcmp(current_top_key, "ocudu_xsm_l2") == 0) {
+                        parse_ocudu_xsm_l2_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "nfapi_socket") == 0) {
+                        parse_nfapi_socket_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "oai_forwarder") == 0) {
+                        parse_oai_forwarder_config(&parser, config, config_flags);
                         expecting_key = 1;
                     }
 #endif

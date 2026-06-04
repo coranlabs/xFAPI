@@ -57,6 +57,10 @@ src/dashboard/server/stats_vault/
 .temp/
 tmp/
 
+# Third-party nFAPI library (upstream open-nFAPI + OAI headers). Not ours;
+# never edited. Included/linked by the OAI_OCUDU build only.
+src/ipc/nfapi/
+
 # Tracked files that would otherwise be caught by the patterns above.
 !CMakeLists.txt
 !src/ipc/xsm/libxsm.so

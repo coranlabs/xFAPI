@@ -16,7 +16,7 @@
 #include "rte_memzone.h"
 #include <rte_eal.h>
 
-#ifdef OCUDU_OCUDU
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
 
 uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
 {
@@ -32,9 +32,21 @@ uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
     else
         snprintf(iova_mode, sizeof(iova_mode), "--iova-mode=va");
 
+    /* In OCUDU_OCUDU, OCUDU-L1 is the DPDK PRIMARY and owns the memzone;
+     * xFAPI attaches as SECONDARY. In OAI_OCUDU there is no OCUDU-L1 (OAI is
+     * on UDP), so xFAPI itself creates the memzone as PRIMARY; OCUDU-L2
+     * then attaches as SECONDARY. */
+#ifdef OAI_OCUDU
+    const char *proc_type = "--proc-type=primary";
+    const char *role_label = "PRIMARY";
+#else
+    const char *proc_type = "--proc-type=secondary";
+    const char *role_label = "SECONDARY";
+#endif
+
     char *argv[] = {
         g_config->app_name,
-        "--proc-type=secondary",
+        (char *)proc_type,
         "--file-prefix", file_prefix,
         "--no-pci",
         iova_mode,
@@ -48,15 +60,14 @@ uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
 
     if (rte_eal_init(argc, argv) < 0) {
         SM_Logs(LOG_CRTERR, _XFAPI_,
-                "[OCUDU_BRIDGE] rte_eal_init failed. "
-                "Is OCUDU-L1 (DPDK PRIMARY on file-prefix=%s) running yet?",
-                file_prefix);
+                "[OCUDU_BRIDGE] rte_eal_init failed (proc-type=%s, file-prefix=%s).",
+                role_label, file_prefix);
         return FAILURE;
     }
 
     SM_Logs(LOG_INFO, _XFAPI_,
-            "[OCUDU_BRIDGE] DPDK EAL attached as SECONDARY on file-prefix=%s.",
-            file_prefix);
+            "[OCUDU_BRIDGE] DPDK EAL attached as %s on file-prefix=%s.",
+            role_label, file_prefix);
     return SUCCESS;
 }
 #endif

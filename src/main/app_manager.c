@@ -19,11 +19,20 @@
 #include "../core/OCUDU_OCUDU/forwarder_l2_to_l1.h"
 #include "../framework/dpdk/dpdk_init.h"
 #endif
+#ifdef OAI_OCUDU
+#include "../core/OAI_OCUDU/forwarder_l2_to_oai.h"
+#include "../framework/dpdk/dpdk_init.h"
+#endif
 
 static void app_select_interfaces(AppContext* ctx) {
 #ifdef OCUDU_OCUDU
     SM_Logs(LOG_INFO, _XFAPI_, "Selecting xSM bridge interfaces.");
     ctx->ocudu_l1_ctx = get_ocudu_l1_interface();
+    ctx->ocudu_l2_ctx = get_ocudu_l2_interface();
+    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
+#elif defined(OAI_OCUDU)
+    SM_Logs(LOG_INFO, _XFAPI_, "Selecting OAI L1 (nFAPI) + OCUDU L2 (xSM) interfaces.");
+    ctx->oai_l1_ctx   = get_oai_l1_interface();
     ctx->ocudu_l2_ctx = get_ocudu_l2_interface();
     SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #else
@@ -60,6 +69,35 @@ int app_init(AppContext* ctx) {
         return -1;
     }
     return 0;
+#elif defined(OAI_OCUDU)
+
+    if (dpdk_init_ocudu_bridge(&ctx->config) != SUCCESS) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "DPDK init failed for OAI_OCUDU mode.");
+        return -1;
+    }
+    if (!ctx->oai_l1_ctx || !ctx->ocudu_l2_ctx) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OAI L1 / OCUDU L2 interfaces not selected.");
+        return -1;
+    }
+    /* L1 init opens the UDP sockets AND the xSM handle toward OCUDU-L2. */
+    if (ctx->oai_l1_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OAI L1 endpoint init failed.");
+        return -1;
+    }
+    /* L2 init is a no-op (xSM handle is opened in L1 init); keep flow symmetric. */
+    if (ctx->ocudu_l2_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OCUDU L2 endpoint init failed.");
+        ctx->oai_l1_ctx->destroy(ctx);
+        return -1;
+    }
+    /* L2->OAI forwarder: drains the OCUDU-L2 xSM queue and sends toward OAI
+     * over the VNF's nFAPI sockets. The OAI->L2 (uplink) direction is handled
+     * inside the VNF's P7 rx_task (started on PNF_START.response). */
+    if (ocudu_fwd_l2_to_oai_start(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OAI_OCUDU L2->OAI forwarder start failed.");
+        return -1;
+    }
+    return 0;
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No build mode defined.");
     return -1;
@@ -84,6 +122,15 @@ void app_destroy(AppContext* ctx) {
     }
     if (ctx->ocudu_l1_ctx && ctx->ocudu_l1_ctx->destroy) {
         ctx->ocudu_l1_ctx->destroy(ctx);
+    }
+#elif defined(OAI_OCUDU)
+    ocudu_fwd_l2_to_oai_stop(ctx);
+    if (ctx->ocudu_l2_ctx && ctx->ocudu_l2_ctx->destroy) {
+        ctx->ocudu_l2_ctx->destroy(ctx);
+    }
+    /* oai_l1_ctx->destroy stops the VNF (P5/P7 threads) and closes L2 xSM. */
+    if (ctx->oai_l1_ctx && ctx->oai_l1_ctx->destroy) {
+        ctx->oai_l1_ctx->destroy(ctx);
     }
 #else
 
