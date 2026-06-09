@@ -43,4 +43,18 @@ void add_message_stats(const char* msg_type, int sfn, int slot, int pdu_size,
 void dump_message_stats_to_json(void);
 uint64_t get_timestamp_ns(void);
 
+// nFAPI message serializers. Each renders a human-readable "key=value\n" dump
+// of the translated nFAPI struct into `output` (NUL-terminated, bounded by
+// max_len). Used to fill the message_content field consumed by the XFAPI
+// dashboard. `msg_ptr` points at the matching nfapi_nr_*_t built by the
+// L2->L1 / L1->L2 translators. Ported from the XFAPI message-stats reference.
+void serialize_nfapi_dl_tti_request_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_ul_tti_request_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_ul_dci_request_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_tx_data_request_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_rx_data_indication_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_crc_indication_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_uci_indication_message(char* output, int max_len, const void* msg_ptr);
+void serialize_nfapi_rach_indication_message(char* output, int max_len, const void* msg_ptr);
+
 #endif
