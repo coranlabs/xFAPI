@@ -16,7 +16,7 @@
 
 
 # --- Configuration Paths ---
-MAIN_CONFIG_FILE="conf/ocudu_ocudu_config.yaml"
+MAIN_CONFIG_FILE="conf/oai_ocudu_config.yaml"
 SIM_CONFIG_FILE=""
 # --- End Configuration Paths ---
 

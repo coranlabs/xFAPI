@@ -12,18 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OCUDU-L2 -> OAI forwarder (OAI_OCUDU mode).
-//
-// Drains the OCUDU-L2 xSM queue (xFAPI is SLAVE on pair 1; OCUDU-L2 is the
-// master) and sends the payload toward the OAI L1 (PNF) over the VNF's
-// nFAPI sockets:
-//   - P5 control messages (msg_id < 0x80) -> SCTP P5 socket.
-//   - P7 data messages (msg_id >= 0x80)   -> UDP P7 socket.
-//
-// v1 is PURE PASSTHROUGH: the bytes coming from OCUDU-L2 are sent verbatim.
-// This will NOT interoperate with a real OAI L1 (OCUDU and OAI speak
-// different FAPI dialects) — FAPI translation is a later phase. The
-// forwarder proves the xSM-drain -> nFAPI-send transport path.
+// OCUDU-L2 -> OAI forwarder (OAI_OCUDU mode): drain the OCUDU-L2 xSM queue and
+// route each message to nFAPI P5 (SCTP, type<0x80) or P7 (UDP, type>=0x80).
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -46,88 +36,64 @@
 
 #include "../../main/app_context.h"
 #include "oai_vnf.h"
+#include "oai_l2_to_l1_p5.h"
+#include "oai_l2_to_l1_p7.h"
 #include "unified_logger.h"
 
 #define FAPI_P7_TYPE_THRESHOLD 0x80
 
-static uint64_t g_l2_to_oai_drained = 0;
-static uint64_t g_l2_to_oai_sent    = 0;
-static uint64_t g_l2_to_oai_last_log_ns = 0;
+// Max time the forwarder waits for the PNF handshake to reach RUNNING before
+// forwarding a cell-level P5 message (OCUDU may send PARAM.request the instant
+// it attaches, possibly racing ahead of the PNF handshake). Bounded so a dead
+// PNF can't wedge the drain loop forever.
+#define P5_RUNNING_WAIT_MS    5000
+#define P5_RUNNING_POLL_MS    10
 
-static uint64_t l2_to_oai_now_ns(void)
+// Wait (bounded) for the PNF handshake to reach RUNNING. Returns 1 if running,
+// 0 if the wait timed out (PNF not up).
+static int l2_to_oai_wait_pnf_running(AppContext* ctx, oai_vnf_t* v)
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+    int waited = 0;
+    while (oai_vnf_get_pnf_state(v) != OAI_VNF_PNF_RUNNING) {
+        if (!atomic_load(&ctx->oai_ocudu_ctx.fwd_l2_to_oai_running)) return 0;
+        if (waited >= P5_RUNNING_WAIT_MS) return 0;
+        struct timespec ts = { .tv_sec = 0,
+                               .tv_nsec = (long)P5_RUNNING_POLL_MS * 1000000L };
+        nanosleep(&ts, NULL);
+        waited += P5_RUNNING_POLL_MS;
+    }
+    return 1;
 }
 
-static void l2_to_oai_log_if_due(void)
-{
-    uint64_t now = l2_to_oai_now_ns();
-    if (now - g_l2_to_oai_last_log_ns < 1000000000ull) return;
-    g_l2_to_oai_last_log_ns = now;
-    SM_Logs(LOG_INFO, _XFAPI_,
-            "[OAI_OCUDU L2->OAI] drained=%lu sent=%lu",
-            (unsigned long)g_l2_to_oai_drained,
-            (unsigned long)g_l2_to_oai_sent);
-}
-
-// Raw-send a verbatim payload toward the PNF, routed by message type.
-static int l2_to_oai_raw_send(oai_vnf_t* v, uint16_t type_id,
-                              const void* payload, uint32_t len)
+// Forward one OCUDU-L2 message toward the PNF, routed by message type:
+//   - control (type_id < 0x80): translate OCUDU-FAPI -> nFAPI, send over P5.
+//   - data    (type_id >= 0x80): translate OCUDU-FAPI -> nFAPI and send over
+//     P7. Types without a translator yet (and OCUDU's end-of-slot sentinel)
+//     are dropped inside the P7 dispatcher; raw OCUDU-FAPI bytes are never
+//     forwarded (OAI speaks a different P7 dialect).
+// payload/len is the full xSM buffer (OCUDU header + body).
+static int l2_to_oai_forward(AppContext* ctx, oai_vnf_t* v, uint16_t type_id,
+                             const void* payload, uint32_t len)
 {
     if (type_id >= FAPI_P7_TYPE_THRESHOLD) {
-        // P7 (UDP). Requires the PNF P7 address (learned in PARAM.response).
-        if (!v->p7_addr_known) {
-            SM_Logs(LOG_WARN, _P7_,
-                    "[OAI_OCUDU L2->OAI] P7 dest unknown; dropping type=0x%04x.",
-                    type_id);
-            return -1;
-        }
-        int sent = sendto(v->p7_sock, payload, len, 0,
-                          (struct sockaddr*)&v->pnf_p7_addr,
-                          sizeof(v->pnf_p7_addr));
-        if (sent != (int)len) {
-            SM_Logs(LOG_ERROR, _P7_,
-                    "[OAI_OCUDU L2->OAI] P7 sendto %d/%u (type=0x%04x).",
-                    sent, len, type_id);
-            return -1;
-        }
-        SM_Logs(LOG_DEBUG, _P7_,
-                "[OAI_OCUDU L2->OAI] P7 sent type=0x%04x (%u bytes).",
-                type_id, len);
-        return 0;
+        int r = ocudu_p7_translate_and_send(ctx, v, type_id, payload, len);
+        return (r < 0) ? -1 : 0;
     }
 
-    // P5 (SCTP).
-    if (v->p5_sock < 0) {
+    // P5 (SCTP) control: gate on the PNF handshake, then translate + send.
+    if (!l2_to_oai_wait_pnf_running(ctx, v)) {
         SM_Logs(LOG_WARN, _P5_,
-                "[OAI_OCUDU L2->OAI] no PNF P5 connection; dropping type=0x%04x.",
-                type_id);
+                "[OAI_OCUDU L2->OAI] PNF not RUNNING; dropping cell P5 "
+                "type=0x%04x.", type_id);
         return -1;
     }
-    int sent = sctp_sendmsg(v->p5_sock, payload, len,
-                            (struct sockaddr*)&v->pnf_p5_addr,
-                            sizeof(v->pnf_p5_addr),
-                            /*ppid*/0, /*flags*/0, /*stream*/0,
-                            /*timetolive*/0, /*context*/0);
-    if (sent != (int)len) {
-        SM_Logs(LOG_ERROR, _P5_,
-                "[OAI_OCUDU L2->OAI] P5 sctp_sendmsg %d/%u (type=0x%04x).",
-                sent, len, type_id);
-        return -1;
-    }
-    SM_Logs(LOG_DEBUG, _P5_,
-            "[OAI_OCUDU L2->OAI] P5 sent type=0x%04x (%u bytes).", type_id, len);
-    return 0;
+    return ocudu_p5_translate_and_send(v, type_id, payload, len);
 }
 
 static void* fwd_l2_to_oai_main(void* arg)
 {
     AppContext* ctx = (AppContext*)arg;
     OAIOCUDUContext* oc = &ctx->oai_ocudu_ctx;
-
-    SM_Logs(LOG_INFO, _XFAPI_, "[OAI_OCUDU L2->OAI] thread started");
 
     while (atomic_load(&oc->fwd_l2_to_oai_running)) {
         xsm_status_t st = XSM_Wait(oc->h_l2, 1000);
@@ -139,7 +105,6 @@ static void* fwd_l2_to_oai_main(void* arg)
 
         xsm_msg_t msg;
         while (XSM_Get(oc->h_l2, &msg) == XSM_OK) {
-            g_l2_to_oai_drained++;
             void* src_va = XSM_PhysToVirt(oc->h_l2, msg.payload_pa);
             if (src_va == NULL) {
                 SM_Logs(LOG_ERROR, _XSM_,
@@ -148,21 +113,10 @@ static void* fwd_l2_to_oai_main(void* arg)
                 continue;
             }
 
-            /* Exact details of every message OCUDU-L2 sends. type_id is the
-             * value L2 put in the xsm descriptor; payload_size is the byte
-             * count; the hex dump is the raw FAPI payload. */
-            SM_Logs(LOG_INFO, _XSM_,
-                    "[OAI_OCUDU L2->OAI] L2 MSG: type_id=0x%04x size=%u flags=0x%04x pa=0x%lx",
-                    msg.type_id, msg.payload_size, msg.flags,
-                    (unsigned long)msg.payload_pa);
-            SM_Logs_Buffer(LOG_INFO, _XSM_, "[OAI_OCUDU L2->OAI] L2 payload: ",
-                           (const uint8_t*)src_va,
-                           msg.payload_size > 256 ? 256 : msg.payload_size);
-
             oai_vnf_t* v = oc->vnf;
             if (v != NULL) {
-                (void)l2_to_oai_raw_send(v, msg.type_id, src_va, msg.payload_size);
-                g_l2_to_oai_sent++;
+                (void)l2_to_oai_forward(ctx, v, msg.type_id, src_va,
+                                        msg.payload_size);
             } else {
                 SM_Logs(LOG_WARN, _XFAPI_,
                         "[OAI_OCUDU L2->OAI] VNF not ready; dropping L2 msg "
@@ -171,10 +125,8 @@ static void* fwd_l2_to_oai_main(void* arg)
 
             XSM_ReturnBuffer(oc->h_l2, msg.payload_pa);
         }
-        l2_to_oai_log_if_due();
     }
 
-    SM_Logs(LOG_INFO, _XFAPI_, "[OAI_OCUDU L2->OAI] thread exiting");
     return NULL;
 }
 

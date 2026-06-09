@@ -68,7 +68,7 @@ oai_forwarder:
 # Logging
 # =============================================================================
 logging:
-  vertical_level: "DEBUG"     # NONE | WARN | INFO | DEBUG
+  vertical_level: "INFO"     # NONE | WARN | INFO | DEBUG
   horizontal_level:
     xFAPI_log: true
     xSM_log: true

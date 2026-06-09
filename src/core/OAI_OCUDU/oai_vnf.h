@@ -12,14 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OAI_OCUDU VNF: xFAPI acts as the nFAPI VNF (server). OAI L1 is the PNF
-// (client) that connects to us. We own the P5 (SCTP) control handshake and
-// the P7 (UDP) data plane. All packing/unpacking is delegated to the
-// third-party nFAPI codec (libnfapi_codec.so); none of that code is edited.
-//
-// This module is OUR code (not copied from open-nFAPI). It references the
-// proven backup VNF for structure but is independently written and uses the
-// upstream codec's public API.
+// OAI_OCUDU VNF: xFAPI as nFAPI VNF (server); OAI L1 is the PNF (client). Owns
+// the P5 (SCTP) handshake and P7 (UDP) data plane via the nFAPI codec API.
 
 #ifndef OAI_OCUDU_OAI_VNF_H
 #define OAI_OCUDU_OAI_VNF_H
@@ -134,6 +128,10 @@ typedef struct oai_vnf {
     // ---- handshake / sequence ----
     int                 phy_id;
     int                 p7_sequence;  // P7 message sequence counter
+    int                 cell_numerology;  // mu (scs_common) latched from CONFIG.request;
+                                          // used to encode OCUDU slot_point in SLOT.indication
+    int                 cell_pci;         // phys_cell_id latched from CONFIG.request;
+                                          // OCUDU's UL PRACH PDU omits it, nFAPI needs it
 
     // ---- codec configs (passed to pack/unpack) ----
     nfapi_p4_p5_codec_config_t p5_codec;
@@ -172,6 +170,16 @@ void oai_vnf_stop(struct AppContext* ctx);
 // Send a fully-populated P7 message to the PNF (pack -> segment -> sendto).
 // Used by the L2->OAI direction. Returns 0 on success, -1 on failure.
 int  oai_vnf_send_p7(struct AppContext* ctx, nfapi_p7_message_header_t* header);
+
+// Pack a fully-populated nFAPI P5 message (nfapi_p5_hdr points at the message's
+// nfapi_nr_p4_p5_message_header_t; msg_len is sizeof the full message struct)
+// and send it to the PNF over SCTP. Public wrapper used by the OCUDU->nFAPI
+// P5 translators. Returns 0 on success, -1 on failure.
+int  oai_vnf_send_p5_msg(struct oai_vnf* v, void* nfapi_p5_hdr, uint32_t msg_len);
+
+// Current PNF handshake state (read by the L2->OAI forwarder to gate cell-level
+// P5 sends until the PNF link is RUNNING).
+oai_vnf_pnf_state_t oai_vnf_get_pnf_state(struct oai_vnf* v);
 
 #endif /* OAI_OCUDU */
 #endif /* OAI_OCUDU_OAI_VNF_H */

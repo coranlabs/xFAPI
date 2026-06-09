@@ -12,20 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OAI_OCUDU VNF — P5 (SCTP) control plane + handshake state machine.
-//
-// xFAPI is the nFAPI VNF (server): it listens on the P5 SCTP port, accepts
-// the OAI L1 (PNF) connection, and drives the PNF-level handshake
-// (PNF_PARAM -> PNF_CONFIG -> PNF_START). On PNF_START.response it brings up
-// the P7 data plane (see oai_p7.c) and issues the cell-level PARAM.request.
-//
-// Resilience: on PNF disconnect or any fatal handshake error, all P7 threads
-// and sockets are torn down, state resets to DISCONNECTED, and the listener
-// loops back to accept() a fresh PNF connection — the bridge survives OAI
-// restarts without restarting xFAPI.
-//
-// This file is OUR code. It calls only the third-party codec's public
-// pack/unpack API; the open-nFAPI sources are never edited.
+// OAI_OCUDU VNF — P5 (SCTP) control plane + PNF handshake state machine.
+// xFAPI is the nFAPI VNF (server); OAI L1 is the PNF (client).
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -48,6 +36,8 @@
 
 #include "../../main/app_context.h"
 #include "oai_p7.h"
+#include "ocudu_fapi_wire.h"
+#include "oai_l1_to_l2_p5.h"
 #include "unified_logger.h"
 
 // Forward declarations (P5 internals).
@@ -63,7 +53,7 @@ static int  oai_vnf_send_p5(oai_vnf_t* v, nfapi_nr_p4_p5_message_header_t* hdr, 
 static int  oai_vnf_send_pnf_param_req(oai_vnf_t* v);
 static int  oai_vnf_send_pnf_config_req(oai_vnf_t* v);
 static int  oai_vnf_send_pnf_start_req(oai_vnf_t* v);
-static int  oai_vnf_send_cell_param_req(oai_vnf_t* v);
+static void oai_vnf_enter_running(oai_vnf_t* v);
 static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len);
 
 // ===========================================================================
@@ -85,14 +75,16 @@ int oai_vnf_start(struct AppContext* ctx)
     v->listener_fd = -1;
     v->p5_sock     = -1;
     v->p7_sock     = -1;
+    // Cell-level P5 (PARAM/CONFIG/START) targets the PHY id OAI assigns from
+    // our PNF_CONFIG.request (oai_vnf_send_pnf_config_req sets phy_id=1).
+    // It MUST be non-zero: OAI only sends PNF_START.response (-> PNF state
+    // RUNNING, which gates cell PARAM.request) when phy->id != 0.
     v->phy_id      = 1;
     v->p7_sequence = 0;
     v->pnf_state   = OAI_VNF_PNF_DISCONNECTED;
     v->checksum_enabled = ctx->config.nfapi_socket.checksum_enabled ? 1 : 0;
     atomic_store(&v->running, 1);
 
-    // Codec configs: zero-init => codec uses its default malloc/free and no
-    // vendor-extension callbacks. Matches the proven backup usage.
     memset(&v->p5_codec, 0, sizeof(v->p5_codec));
     memset(&v->p7_codec, 0, sizeof(v->p7_codec));
 
@@ -136,11 +128,6 @@ int oai_vnf_start(struct AppContext* ctx)
         }
     }
 
-    SM_Logs(LOG_INFO, _XFAPI_,
-            "[OAI_VNF] started. P5 SCTP listening on :%d, P7 UDP bound on :%d. "
-            "Waiting for OAI L1 (PNF) to connect.",
-            ctx->config.nfapi_socket.p5_local_port,
-            ctx->config.nfapi_socket.p7_local_port);
     return 0;
 }
 
@@ -168,7 +155,6 @@ void oai_vnf_stop(struct AppContext* ctx)
 
     ctx->oai_ocudu_ctx.vnf = NULL;
     free(v);
-    SM_Logs(LOG_INFO, _XFAPI_, "[OAI_VNF] stopped, resources released.");
 }
 
 // ===========================================================================
@@ -228,9 +214,6 @@ static int oai_vnf_open_p5_listener(oai_vnf_t* v)
     }
 
     v->listener_fd = fd;
-    SM_Logs(LOG_INFO, _P5_,
-            "[OAI_VNF] P5 SCTP listener up on :%d (fd=%d, backlog=%d).",
-            port, fd, OAI_VNF_SCTP_BACKLOG);
     return 0;
 }
 
@@ -277,9 +260,6 @@ static int oai_vnf_open_p7_socket(oai_vnf_t* v)
         v->p7_addr_known = 1;
     }
 
-    SM_Logs(LOG_INFO, _P7_,
-            "[OAI_VNF] P7 UDP socket bound on :%d (fd=%d), default dest %s:%d.",
-            port, fd, cfg->nfapi_socket.remote_ip, cfg->nfapi_socket.p7_remote_port);
     return 0;
 }
 
@@ -290,7 +270,6 @@ static int oai_vnf_open_p7_socket(oai_vnf_t* v)
 static void* oai_vnf_p5_listener_thread(void* arg)
 {
     oai_vnf_t* v = (oai_vnf_t*)arg;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] P5 listener thread started.");
 
     while (atomic_load(&v->running)) {
         fd_set rfds;
@@ -338,7 +317,6 @@ static void* oai_vnf_p5_listener_thread(void* arg)
         }
     }
 
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] P5 listener thread exiting.");
     return NULL;
 }
 
@@ -372,10 +350,6 @@ static int oai_vnf_accept_pnf(oai_vnf_t* v)
     v->pnf_p5_addr = peer;
     v->pnf_state  = OAI_VNF_PNF_CONNECTED;
 
-    SM_Logs(LOG_INFO, _P5_,
-            "[OAI_VNF] PNF (OAI L1) connected from %s:%d (p5_sock=%d). "
-            "Starting handshake.",
-            inet_ntoa(peer.sin_addr), ntohs(peer.sin_port), s);
     return 0;
 }
 
@@ -394,7 +368,6 @@ static void oai_vnf_close_pnf_session(oai_vnf_t* v)
     oai_p7_seg_queue_reset(&v->seg_queue);
     v->pnf_state    = OAI_VNF_PNF_DISCONNECTED;
     v->p7_addr_known = 0;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] PNF session reset -> DISCONNECTED.");
 }
 
 // ===========================================================================
@@ -404,9 +377,8 @@ static void oai_vnf_close_pnf_session(oai_vnf_t* v)
 // Returns >0 on a processed message, 0 on orderly disconnect, <0 on error.
 static int oai_vnf_p5_read_dispatch(oai_vnf_t* v)
 {
-    // 1) Peek the NR P5 header (10 bytes: phy_id, message_id, message_length,
-    //    spare) to learn the body length. message_length is the BODY length;
-    //    the full wire message is NFAPI_NR_P5_HEADER_LENGTH + message_length.
+    // Peek the NR P5 header to learn the BODY length; full wire message is
+    // NFAPI_NR_P5_HEADER_LENGTH + message_length.
     uint8_t hdr_buf[NFAPI_NR_P5_HEADER_LENGTH];
     struct sctp_sndrcvinfo sri;
     memset(&sri, 0, sizeof(sri));
@@ -447,7 +419,7 @@ static int oai_vnf_p5_read_dispatch(oai_vnf_t* v)
         return -1;
     }
 
-    // 2) Read the full message.
+    // Read the full message.
     uint8_t* buf = (uint8_t*)malloc(total);
     if (buf == NULL) {
         SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] P5 malloc(%u) failed; dropping.", total);
@@ -464,11 +436,6 @@ static int oai_vnf_p5_read_dispatch(oai_vnf_t* v)
         }
         return n;
     }
-
-    SM_Logs(LOG_DEBUG, _P5_,
-            "[OAI_VNF] P5 RX msg_id=0x%04x len=%u (read %d bytes).",
-            header.message_id, total, n);
-    SM_Logs_Buffer(LOG_DEBUG, _P5_, "[OAI_VNF] P5 RX raw: ", buf, (uint32_t)n);
 
     oai_vnf_handle_p5_message(v, buf, (uint32_t)n);
     free(buf);
@@ -498,9 +465,6 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] PNF_PARAM.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_,
-                    "[OAI_VNF] <- PNF_PARAM.response (error_code=%u).",
-                    resp.error_code);
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
             if (oai_vnf_send_pnf_config_req(v) != 0) {
@@ -518,9 +482,6 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] PNF_CONFIG.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_,
-                    "[OAI_VNF] <- PNF_CONFIG.response (error_code=%u).",
-                    resp.error_code);
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
             if (oai_vnf_send_pnf_start_req(v) != 0) {
@@ -538,30 +499,11 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] PNF_START.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_,
-                    "[OAI_VNF] <- PNF_START.response (error_code=%u). "
-                    "PNF handshake complete; bringing up P7.",
-                    resp.error_code);
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
-
-            v->pnf_state = OAI_VNF_PNF_RUNNING;
-
-            // Bring up the P7 data plane (listener + rx_task).
-            if (oai_p7_threads_start(v) != 0) {
-                SM_Logs(LOG_CRTERR, _P7_,
-                        "[OAI_VNF] Failed to start P7 threads; resetting session.");
-                oai_vnf_close_pnf_session(v);
-                break;
-            }
-            v->p7_threads_started = 1;
-
-            // Issue the cell-level PARAM.request. Cell-level CONFIG/START are
-            // driven by OCUDU L2 over xSM (see oai_l1_interface / forwarder).
-            if (oai_vnf_send_cell_param_req(v) != 0) {
-                SM_Logs(LOG_WARN, _P5_,
-                        "[OAI_VNF] Failed to send cell PARAM.request.");
-            }
+            // Most OAI builds do NOT send PNF_START.response (VNF went RUNNING
+            // after PNF_START.request); idempotent if a build does send it.
+            oai_vnf_enter_running(v);
             break;
         }
 
@@ -573,27 +515,26 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] PARAM.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_,
-                    "[OAI_VNF] <- PARAM.response (error_code=%u).",
-                    resp.error_code);
 
             // The PNF reports its P7 address/port here; latch it for P7 TX.
             if (resp.nfapi_config.p7_pnf_address_ipv4.tl.tag) {
                 memcpy(&v->pnf_p7_addr.sin_addr.s_addr,
                        resp.nfapi_config.p7_pnf_address_ipv4.address,
                        NFAPI_IPV4_ADDRESS_LENGTH);
-                SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] PNF P7 IPv4 = %s",
-                        inet_ntoa(v->pnf_p7_addr.sin_addr));
             }
             if (resp.nfapi_config.p7_pnf_port.tl.tag) {
+                // OAI advertises its P7 port already in NETWORK byte order;
+                // assign directly (htons() again would double-swap).
                 v->pnf_p7_addr.sin_port =
-                    htons(resp.nfapi_config.p7_pnf_port.value);
+                    (in_port_t)resp.nfapi_config.p7_pnf_port.value;
                 v->p7_addr_known = 1;
-                SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] PNF P7 port = %u",
-                        resp.nfapi_config.p7_pnf_port.value);
             }
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
+            // Forward PARAM.response (error_code) toward OCUDU L2 so its
+            // bring-up state machine advances to CONFIG.request.
+            ocudu_p5_send_response_to_l2(v->ctx, OCUDU_FAPI_PARAM_RESPONSE,
+                                         (uint8_t)resp.error_code);
             break;
         }
 
@@ -605,11 +546,12 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] CONFIG.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] <- CONFIG.response (error_code=%u).",
-                    resp.error_code);
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
-            // TODO(phase-translation): forward CONFIG.response toward OCUDU L2.
+            // Forward CONFIG.response (error_code) toward OCUDU L2 so its
+            // bring-up state machine advances to START.request.
+            ocudu_p5_send_response_to_l2(v->ctx, OCUDU_FAPI_CONFIG_RESPONSE,
+                                         (uint8_t)resp.error_code);
             break;
         }
 
@@ -621,7 +563,6 @@ static void oai_vnf_handle_p5_message(oai_vnf_t* v, uint8_t* buf, uint32_t len)
                 SM_Logs(LOG_ERROR, _P5_, "[OAI_VNF] START.response unpack failed.");
                 break;
             }
-            SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] <- START.response. Cell is RUNNING.");
             if (resp.vendor_extension)
                 v->p5_codec.deallocate(resp.vendor_extension);
             // TODO(phase-translation): forward START.response toward OCUDU L2.
@@ -658,9 +599,6 @@ static int oai_vnf_send_p5(oai_vnf_t* v, nfapi_nr_p4_p5_message_header_t* hdr,
         return -1;
     }
 
-    SM_Logs_Buffer(LOG_DEBUG, _P5_, "[OAI_VNF] P5 TX raw: ",
-                   v->p5_tx_buf, (uint32_t)packed);
-
     int sent = sctp_sendmsg(v->p5_sock, v->p5_tx_buf, packed,
                             (struct sockaddr*)&v->pnf_p5_addr,
                             sizeof(v->pnf_p5_addr),
@@ -684,7 +622,6 @@ static int oai_vnf_send_pnf_param_req(oai_vnf_t* v)
     nfapi_nr_pnf_param_request_t req;
     memset(&req, 0, sizeof(req));
     req.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PNF_PARAM_REQUEST;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] -> PNF_PARAM.request");
     int rc = oai_vnf_send_p5(v, &req.header, sizeof(req));
     if (rc == 0) v->pnf_state = OAI_VNF_PNF_PNF_PARAM_SENT;
     return rc;
@@ -695,7 +632,14 @@ static int oai_vnf_send_pnf_config_req(oai_vnf_t* v)
     nfapi_nr_pnf_config_request_t req;
     memset(&req, 0, sizeof(req));
     req.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PNF_CONFIG_REQUEST;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] -> PNF_CONFIG.request");
+    // Describe one PHY with a NON-ZERO phy_id. OAI copies this into phy->id and
+    // only sends PNF_START.response (-> PNF RUNNING) when phy->id != 0; without
+    // it the cell PARAM.request would be rejected with INVALID_STATE.
+    req.pnf_phy_rf_config.tl.tag = NFAPI_PNF_PHY_RF_TAG;
+    req.pnf_phy_rf_config.number_phy_rf_config_info = 1;
+    req.pnf_phy_rf_config.phy_rf_config[0].phy_id           = (uint16_t)v->phy_id;
+    req.pnf_phy_rf_config.phy_rf_config[0].phy_config_index = 0;
+    req.pnf_phy_rf_config.phy_rf_config[0].rf_config_index  = 0;
     int rc = oai_vnf_send_p5(v, &req.header, sizeof(req));
     if (rc == 0) v->pnf_state = OAI_VNF_PNF_PNF_CONFIG_SENT;
     return rc;
@@ -706,21 +650,52 @@ static int oai_vnf_send_pnf_start_req(oai_vnf_t* v)
     nfapi_nr_pnf_start_request_t req;
     memset(&req, 0, sizeof(req));
     req.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PNF_START_REQUEST;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] -> PNF_START.request");
     int rc = oai_vnf_send_p5(v, &req.header, sizeof(req));
-    if (rc == 0) v->pnf_state = OAI_VNF_PNF_PNF_START_SENT;
-    return rc;
+    if (rc != 0) return rc;
+    v->pnf_state = OAI_VNF_PNF_PNF_START_SENT;
+    // OAI's PNF does not reply with PNF_START.response: after PNF_START.request
+    // it goes straight to accepting the cell-level PARAM/CONFIG/START.request.
+    // So bring up P7 + go RUNNING now, which unblocks the L2->OAI forwarder to
+    // start translating OCUDU's cell config toward OAI.
+    oai_vnf_enter_running(v);
+    return 0;
 }
 
-static int oai_vnf_send_cell_param_req(oai_vnf_t* v)
+// Bring the VNF to RUNNING: start the P7 data plane (once) and mark the PNF
+// link ready so cell-level P5 can be forwarded. Idempotent.
+static void oai_vnf_enter_running(oai_vnf_t* v)
 {
-    nfapi_nr_param_request_scf_t req;
-    memset(&req, 0, sizeof(req));
-    req.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PARAM_REQUEST;
-    req.header.phy_id     = (uint16_t)v->phy_id;
-    SM_Logs(LOG_INFO, _P5_, "[OAI_VNF] -> PARAM.request (cell, phy_id=%d)",
-            v->phy_id);
-    return oai_vnf_send_p5(v, &req.header, sizeof(req));
+    if (v->pnf_state == OAI_VNF_PNF_RUNNING) {
+        return;
+    }
+    if (!v->p7_threads_started) {
+        if (oai_p7_threads_start(v) != 0) {
+            SM_Logs(LOG_CRTERR, _P7_,
+                    "[OAI_VNF] Failed to start P7 threads; resetting session.");
+            oai_vnf_close_pnf_session(v);
+            return;
+        }
+        v->p7_threads_started = 1;
+    }
+    v->pnf_state = OAI_VNF_PNF_RUNNING;
+}
+
+// ===========================================================================
+// Public helpers for the OCUDU<->nFAPI P5 translators.
+// ===========================================================================
+
+int oai_vnf_send_p5_msg(struct oai_vnf* v, void* nfapi_p5_hdr, uint32_t msg_len)
+{
+    if (v == NULL || nfapi_p5_hdr == NULL) {
+        return -1;
+    }
+    return oai_vnf_send_p5(v, (nfapi_nr_p4_p5_message_header_t*)nfapi_p5_hdr,
+                           msg_len);
+}
+
+oai_vnf_pnf_state_t oai_vnf_get_pnf_state(struct oai_vnf* v)
+{
+    return (v != NULL) ? v->pnf_state : OAI_VNF_PNF_DISCONNECTED;
 }
 
 #endif /* OAI_OCUDU */

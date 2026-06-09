@@ -1,75 +1,176 @@
-# =============================================================================
-# XFAPI configuration — OCUDU_OCUDU bridge mode
-# =============================================================================
-# See docs/BUILD_AND_RUN.md for prerequisites and startup order.
+# XFAPI configuration for OCUDU_OCUDU mode (translator-bridge topology, v3).
+#
+# Topology:
+#
+#   OCUDU-L1 (DPDK PRIMARY, owns OFH NIC + mbuf pools)
+#         ↕  pair 0 (xSM SLAVE side ─── pair 0 xSM MASTER side)
+#   ┌──── single shared memzone "xsm_bridge" ────┐
+#   │ pair 0: L1 (slave)   <-> XFAPI (master)    │
+#   │ pair 1: XFAPI (slave) <-> L2 (master)      │
+#   └────────────────────────────────────────────┘
+#         ↕  pair 1 (xSM SLAVE side ─── pair 1 xSM MASTER side)
+#   OCUDU-L2 (DPDK SECONDARY, attaches as xSM MASTER on pair 1)
+#
+# Startup order:
+#   1. OCUDU-L1   (DPDK PRIMARY,   xSM SLAVE on pair 0; creates the memzone
+#                  with num_pairs=2)
+#   2. XFAPI      (DPDK SECONDARY, XSM_OpenDual: master on pair 0 + slave on
+#                  pair 1)
+#   3. OCUDU-L2   (DPDK SECONDARY, xSM MASTER on pair 1)
+#
+# Hugepage budget: at least max(ocudu_xsm_l1.memory_size, ocudu_xsm_l2.memory_size)
+# — the two endpoint configs describe per-pair tuning of the SAME memzone, not
+# two separate memzones. The slave's memory_size determines the app region
+# size; both pairs share that one region.
+#
+# Build:   cmake -DOCUDU_OCUDU=ON ..
+# Run:     ./bin/xfapi_main --cfgfile conf/ocudu_ocudu_config.yaml
 
-# =============================================================================
-# DPDK configuration
-# =============================================================================
-# XFAPI runs as DPDK SECONDARY. It does not probe the NIC — OCUDU-L1
-# (PRIMARY) owns the NIC and mbuf pools. file-prefix must match OCUDU-L1's.
+# ===============================
+# DPDK Configuration
+# ===============================
+# XFAPI runs as DPDK SECONDARY (--proc-type=secondary, --no-pci). It does
+# NOT probe the NIC — OCUDU-L1 (PRIMARY) owns the NIC and mbuf state.
+# file-prefix MUST match what OCUDU-L1 used to create the runtime.
 dpdk_config:
   dpdk_iova_mode: 0           # 0 = PA, 1 = VA. Must match L1's setting.
-  dpdk_memory_zone: "gnb0"    # Must match OCUDU-L1's --file-prefix.
+  dpdk_memory_zone: "gnb0"    # All three procs use --file-prefix=gnb0.
 
-  # Parsed but ignored in OCUDU_OCUDU mode; left for YAML schema compatibility.
+  # dpdk_device_1/2 are PARSED but IGNORED in OCUDU_OCUDU mode (XFAPI no
+  # longer probes the NIC; OCUDU-L1 PRIMARY owns it). Left here for YAML
+  # compatibility with other modes; safe to set to a placeholder.
   dpdk_device_1: "0000:00:00.0"
   dpdk_device_2: "0000:00:00.0"
 
-# =============================================================================
-# xSM endpoint toward OCUDU-L1 (pair 0)
-# =============================================================================
+# ===============================
+# xSM endpoint toward OCUDU-L1 (DU-low / PHY) — pair 0 in the shared memzone
+# ===============================
+# device_name MUST match ocudu_xsm_l2.device_name AND OCUDU-L1's
+# fapi_split_l1.xsm_device_name (and OCUDU-L2's fapi_split_l2.xsm_device_name).
+# Only one memzone exists; both endpoints below describe per-pair tuning.
+#
+# memory_size on this side is informational — XFAPI is MASTER on pair 0, so
+# it inherits the size from L1's slave-side reservation.
 ocudu_xsm_l1:
   device_name: "xsm_bridge"
-  memory_size: 2346713088     # ~2.18 GB
-  queue_capacity: 1024
+  memory_size: 2346713088     # ~2.18 GB; informational on master side
+  queue_capacity: 1024        # power of two; 0 -> xSM default
   return_queue_capacity: 1024
 
-# =============================================================================
-# xSM endpoint toward OCUDU-L2 (pair 1)
-# =============================================================================
+# ===============================
+# xSM endpoint toward OCUDU-L2 (DU-high / MAC) — pair 1 in the shared memzone
+# ===============================
+# XFAPI is SLAVE on pair 1, so it carves the slave-side bump pool used by
+# the L1->L2 forwarder for outbound buffers.
 ocudu_xsm_l2:
-  device_name: "xsm_bridge"
+  device_name: "xsm_bridge"   # same memzone as ocudu_xsm_l1
   memory_size: 2346713088
   queue_capacity: 1024
   return_queue_capacity: 1024
 
-# =============================================================================
+# ===============================
 # Forwarder thread settings
-# =============================================================================
+# ===============================
 ocudu_forwarder:
-  l1_to_l2_core_id: 15       # CPU pin for L1->L2 forwarder thread
-  l2_to_l1_core_id: 31       # CPU pin for L2->L1 forwarder thread
+  # Affinity: pin each forwarder to a CPU whose SMT sibling is NOT used by
+  # OCUDU-L1's main_pool (cores 22-27 in the reference config). Previously
+  # using CPUs 8/9 stole execution units from main_pool via SMT siblings
+  # 24/25, which produced the OFH UL "missed messages" flood and
+  # late-TTI cascades that pushed UEs into RLF after ~10 s.
+  #
+  # CPU 31 is the only fully-isolated core not claimed by L1 or L2; put the
+  # latency-critical L2->L1 forwarder there. CPU 15 is the SMT sibling of
+  # 31 and is unclaimed by both binaries; use it for L1->L2 (the heavier
+  # one carrying P7 indications, but less latency-critical because it
+  # only feeds L2's RX which is already buffered).
+  # Pinned to the ISOLATED RT cores (0-20: isolcpus/nohz_full/rcu_nocbs). The kernel
+  # housekeeping/RCU runs on 21-31, so gNB RT threads here cannot starve it (no reboot).
+  # gNB map on isolated cores: odu_low dpdk(0,1)+main(2,3)+rx(4); odu_high main(5)+rx(6);
+  # XFAPI fwd(7,8)+rx(9). UE+proxy go on 13-20 (also isolated). Launch with taskset -c 0-12.
+  l1_to_l2_core_id: 7
+  l2_to_l1_core_id: 8
+  # SCHED_FIFO priority hierarchy (higher = more important):
+  #   90   OFH timing thread                 (must never miss a tick)
+  #   89   cell_rt                           (slot processing)
+  #   85   xSM RX threads + bridge forwarders (bridge-critical)
+  #   <80  main_pool, normal workers
+  # The previous value of 80 let cell_rt preempt the forwarders during a
+  # slot, producing the late P5/P7 messages observed in odu_low.log
+  # (Received late UL_TTI.request from slot 836-837 etc).
   priority: 85
   sched_policy: "SCHED_FIFO"
 
-# =============================================================================
-# Split mode
-# =============================================================================
-# Set role: L1 or L2 to run XFAPI in split mode (two hosts connected by a
-# dedicated NIC link). Leave role: none for the default single-host bridge.
+# ===============================
+# Split-mode configuration
+# ===============================
+# Selects whether XFAPI runs as the single-host translator-bridge (today's
+# behaviour) OR one half of a two-host split-mode pair connected by a
+# dedicated DPDK NIC link.
+#
+#   role: none  -> single-host bridge (default; everything below ignored).
+#   role: L1    -> this XFAPI runs on the L1 server. It opens the local
+#                  xSM pair-0 endpoint toward OCUDU-L1 AND a DPDK-Ethernet
+#                  xSM endpoint toward the peer XFAPI on the L2 server.
+#   role: L2    -> this XFAPI runs on the L2 server. It opens the local
+#                  xSM pair-1 endpoint toward OCUDU-L2 AND a DPDK-Ethernet
+#                  xSM endpoint toward the peer XFAPI on the L1 server.
+#
+# Per-server bring-up checklist (when role != none):
+#
+#   1) Edit `local_pci` to the PCI BDF of THIS host's NIC port cabled to
+#      the peer server. The two servers MUST have different local_pci
+#      values (they're different machines).
+#
+#   2) Edit `peer_mac` to the MAC address of the PEER server's NIC port
+#      (the one its `local_pci` field points at). The two servers MUST
+#      have different peer_mac values (each points at the other host).
+#      Run `ip link show <iface>` on the peer to read its MAC.
+#
+#   3) On the L1 server only: OCUDU-L1's hal.eal_args must include
+#      `-a <local_pci>` so XFAPI-L1 (DPDK SECONDARY) can see the NIC.
+#
+#   4) On the L2 server only: edit OCUDU-L2's fapi_split_l2 YAML to set
+#      `xsm_file_prefix: gnb0_l2` and `dpdk_proc_type: secondary` so it
+#      attaches under XFAPI-L2's PRIMARY EAL on file-prefix=gnb0_l2.
+#      This requires the OCUDU-L2 patches in docs/xfapi_split_*.pdf.
+#
+# See docs/xfapi_split_architecture.pdf for the full architecture.
 split:
+  # MUST be set per server. Leaving role: none keeps the single-host
+  # bridge behaviour and ignores every other split.* key.
   role: none                       # none | L1 | L2
 
-  # Set when role != none: PCI BDF of THIS host's NIC port for the L1<->L2
-  # link, and MAC address of the PEER host's NIC port.
+  # MUST be set when role != none. PCI BDF of THIS host's NIC port for
+  # the L1<->L2 link. (Example: "0000:51:00.1" on server five if that's
+  # port B of the XXV710 cabled to server seven.)
   local_pci: "0000:00:00.0"
+
+  # MUST be set when role != none. MAC address of the PEER host's NIC
+  # port (the one cabled to ours). Must match the peer's actual MAC.
   peer_mac:  "00:00:00:00:00:00"
 
-  mtu: 8192
-  rx_lcore_id: 14
-  local_memzone_name: "xsm_eth_local"
-  local_memzone_size: 268435456    # 256 MiB
+  mtu: 8192                        # NIC MTU (jumbo recommended)
+  rx_lcore_id: 9                   # isolated RT core (0-20); role=none so unused, but valid.
 
-# =============================================================================
+  # Local DPDK memzone for the DPDK-Ethernet handle's buffer pool.
+  # Distinct from ocudu_xsm_l1/l2.device_name (which is the OCUDU-facing
+  # memzone); two memzones live in the same DPDK process. The L1 and L2
+  # servers can share this same name because they're different DPDK
+  # processes.
+  local_memzone_name: "xsm_eth_local"
+  local_memzone_size: 268435456    # 256 MiB; covers 1024 x 128 KB buffers
+
+# ===============================
 # Logging
-# =============================================================================
+# ===============================
 logging:
   vertical_level: "INFO"      # NONE | WARN | INFO | DEBUG
   horizontal_level:
     xFAPI_log: true
     xSM_log: true
+    nFAPI_log: false
     P5_log: false
     P7_log: false
   print_config: true
   print_datetime: true
+

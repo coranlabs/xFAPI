@@ -133,6 +133,26 @@ if(OAI_OCUDU)
         src/core/OAI_OCUDU/oai_vnf.c
         src/core/OAI_OCUDU/oai_p7.c
         src/core/OAI_OCUDU/forwarder_l2_to_oai.c
+        # OCUDU-FAPI <-> nFAPI P5 translation layer (our code; pure C, no OCUDU
+        # C++ dependency).
+        src/translation/OAI_L1_OCUDU/L2_to_L1/oai_l2_to_l1_p5.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P5/param_request.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P5/config_request.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P5/start_request.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P5/stop_request.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/oai_l1_to_l2_p5.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P5/param_response.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P5/config_response.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/oai_l1_to_l2_p7.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P7/slot_indication.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P7/rach_indication.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P7/crc_indication.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P7/rx_data_indication.c
+        src/translation/OAI_L1_OCUDU/L1_to_L2/P7/uci_indication.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/oai_l2_to_l1_p7.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P7/dl_tti_request.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P7/tx_data_request.c
+        src/translation/OAI_L1_OCUDU/L2_to_L1/P7/ul_tti_request.c
         # Pulled in because main.c unconditionally references them.
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
@@ -182,7 +202,11 @@ if(OAI_OCUDU)
     # src/ipc is the include root used by the path-qualified upstream
     # includes ("nfapi/oai_integration/vendor_ext.h", "nfapi/open-nFAPI/...").
     target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
-    target_compile_definitions(nfapi_codec PUBLIC MAX_NUM_CCs=1 ENABLE_SOCKET)
+    # ENABLE_10_02 MUST match the OAI L1 build (its nr_fapi_p5 is built with
+    # ENABLE_10_02): it selects the SCF 10.02 cell PARAM/CONFIG wire layout
+    # (per-slot TDD table + SSB table). Without it the CONFIG.request would pack
+    # a different layout than OAI unpacks. (NOT ENABLE_10_04 / ENABLE_AERIAL.)
+    target_compile_definitions(nfapi_codec PUBLIC MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
     # Upstream code is third-party: silence its warnings so our -Werror-free
     # build stays clean without editing it.
     target_compile_options(nfapi_codec PRIVATE -w)
@@ -223,10 +247,20 @@ if(OAI_OCUDU)
         ${NFAPI_DIR}/open-nFAPI/vnf/public_inc
         ${NFAPI_DIR}/oai_common
         ${NFAPI_DIR}/oai_common/common/utils
+        # Our P5 translators + VNF glue.
+        ${PROJECT_SOURCE_DIR}/src/main
+        ${PROJECT_SOURCE_DIR}/src/core/OAI_OCUDU
+        ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU
+        ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU/L2_to_L1
+        ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU/L1_to_L2
+        # Message-stats serializers ("message_stats.h") used by the P7 translators
+        # to emit dashboard-compatible message_content.
+        ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
     )
     # Our glue includes the same public headers, so it must see the same
-    # MAX_NUM_CCs / ENABLE_SOCKET definitions the codec was built with.
-    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_SOCKET)
+    # codec build definitions (incl. ENABLE_10_02 for the SCF 10.02 cell P5
+    # wire layout — see the nfapi_codec target above).
+    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
     # nfapi_codec: the third-party nFAPI codec. sctp: P5 control plane runs
     # over SCTP (xFAPI is the VNF/server).
     target_link_libraries(xfapi_main PRIVATE nfapi_codec sctp)

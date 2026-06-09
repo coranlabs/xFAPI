@@ -12,17 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OAI_OCUDU VNF — P7 (UDP) data plane.
-//
-// RX:  oai_p7_listener_thread  : recv UDP -> peek header -> full read into a
-//        preallocated pool slot -> enqueue to rx_task via p7_rx_queue.
-//      oai_p7_rx_task_thread    : dequeue -> reassemble segments -> dispatch
-//        by message_id -> forward the (uplink) message toward OCUDU L2 over
-//        xSM (v1: passthrough bytes; translation is a later phase).
-// TX:  oai_vnf_send_p7          : pack -> segment (>SEGMENT_SIZE) -> checksum
-//        -> sendto the PNF P7 address.
-//
-// OUR code. Calls only the third-party codec public API + xSM.
+// OAI_OCUDU VNF — P7 (UDP) data plane. RX: listener -> rx_task reassembles
+// segments and translates uplink toward OCUDU L2. TX: pack -> segment -> send.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -45,6 +36,7 @@
 #include <arpa/inet.h>
 
 #include "../../main/app_context.h"
+#include "oai_l1_to_l2_p7.h"
 #include "unified_logger.h"
 #include "nfapi_interface.h"
 #include "nfapi_nr_interface.h"
@@ -152,67 +144,6 @@ static oai_p7_seq_entry_t* seg_find_or_alloc(oai_p7_seg_queue_t* q, uint8_t seq)
 }
 
 // ===========================================================================
-// Bridge seam: forward an (uplink) nFAPI message toward OCUDU L2 over xSM.
-//
-// v1 PASSTHROUGH: the raw nFAPI bytes are copied into an L2 xSM buffer and
-// XSM_Put toward OCUDU-L2. This will NOT interoperate with a real OCUDU L2
-// (which deserializes its own FAPI dialect) — FAPI translation is a later
-// phase. The seam proves the receive->bridge path end to end.
-// ===========================================================================
-
-static void oai_p7_forward_to_l2(AppContext* ctx, uint16_t message_id,
-                                 const uint8_t* msg, uint32_t len)
-{
-    OAIOCUDUContext* oc = &ctx->oai_ocudu_ctx;
-    if (oc->h_l2 == NULL) {
-        SM_Logs(LOG_WARN, _XSM_,
-                "[OAI_VNF] L2 xSM not ready; dropping uplink msg_id=0x%04x.",
-                message_id);
-        return;
-    }
-
-    uint64_t dst_pa = 0;
-    xsm_status_t a_st = XSM_AcquireBuffer(oc->h_l2, &dst_pa);
-    if (a_st != XSM_OK) {
-        SM_Logs(LOG_WARN, _XSM_,
-                "[OAI_VNF] XSM_AcquireBuffer(L2) failed: %s; dropping "
-                "msg_id=0x%04x (%u bytes).",
-                xsm_strerror(a_st), message_id, len);
-        return;
-    }
-    void* dst_va = XSM_PhysToVirt(oc->h_l2, dst_pa);
-    if (dst_va == NULL) {
-        SM_Logs(LOG_ERROR, _XSM_,
-                "[OAI_VNF] PA->VA failed for L2 pa=0x%lx; dropping.",
-                (unsigned long)dst_pa);
-        XSM_ReturnBuffer(oc->h_l2, dst_pa);
-        return;
-    }
-
-    memcpy(dst_va, msg, len);
-
-    xsm_msg_t out;
-    memset(&out, 0, sizeof(out));
-    out.payload_pa   = dst_pa;
-    out.payload_size = len;
-    out.type_id      = message_id;   /* carry nFAPI msg id; L2 may use/ignore */
-    out.flags        = 0;
-
-    xsm_status_t p_st = XSM_Put(oc->h_l2, &out);
-    if (p_st != XSM_OK) {
-        SM_Logs(LOG_WARN, _XSM_,
-                "[OAI_VNF] XSM_Put(L2) failed: %s; returning buffer.",
-                xsm_strerror(p_st));
-        XSM_ReturnBuffer(oc->h_l2, dst_pa);
-        return;
-    }
-    XSM_Notify(oc->h_l2);
-    SM_Logs(LOG_DEBUG, _XSM_,
-            "[OAI_VNF] uplink msg_id=0x%04x (%u bytes) -> OCUDU L2.",
-            message_id, len);
-}
-
-// ===========================================================================
 // P7 message dispatch (a fully-reassembled message)
 // ===========================================================================
 
@@ -223,51 +154,26 @@ static void oai_p7_dispatch(AppContext* ctx, const uint8_t* msg, uint32_t len)
         return;
     }
 
-    // message_id sits in the P7 header (phy_id(2), message_id(2), ...).
-    nfapi_p7_message_header_t hdr;
+    // MUST use the NR header unpack: the legacy one reads message_length as a
+    // u16 and yields 0 for NR messages.
+    nfapi_nr_p7_message_header_t hdr;
     memset(&hdr, 0, sizeof(hdr));
-    if (nfapi_p7_message_header_unpack((void*)msg, len, &hdr, sizeof(hdr), NULL) < 0) {
+    if (!nfapi_nr_p7_message_header_unpack((void*)msg, len, &hdr, sizeof(hdr), NULL)) {
         SM_Logs(LOG_ERROR, _P7_, "[OAI_VNF] P7 header unpack failed; dropping.");
         return;
     }
 
-    switch (hdr.message_id) {
-        case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
-            SM_Logs(LOG_DEBUG, _P7_, "[OAI_VNF] <- SLOT.indication (%u bytes).", len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-        case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION:
-            SM_Logs(LOG_DEBUG, _P7_, "[OAI_VNF] <- RX_DATA.indication (%u bytes).", len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-        case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
-            SM_Logs(LOG_DEBUG, _P7_, "[OAI_VNF] <- CRC.indication (%u bytes).", len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-        case NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION:
-            SM_Logs(LOG_DEBUG, _P7_, "[OAI_VNF] <- UCI.indication (%u bytes).", len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-        case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
-            SM_Logs(LOG_DEBUG, _P7_, "[OAI_VNF] <- RACH.indication (%u bytes).", len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-        default:
-            SM_Logs(LOG_DEBUG, _P7_,
-                    "[OAI_VNF] <- P7 msg_id=0x%04x (%u bytes) forwarded.",
-                    hdr.message_id, len);
-            oai_p7_forward_to_l2(ctx, hdr.message_id, msg, len);
-            break;
-    }
+    // Translate the nFAPI uplink/indication to OCUDU-FAPI and deliver to L2.
+    (void)ocudu_p7_translate_to_l2(ctx, hdr.message_id, msg, len);
 }
 
 // Handle a possibly-segmented P7 message. Reassembles into a contiguous
 // buffer and dispatches when complete.
 static void oai_p7_handle_segmented(oai_vnf_t* v, const uint8_t* msg, uint32_t len)
 {
-    nfapi_p7_message_header_t hdr;
+    nfapi_nr_p7_message_header_t hdr;
     memset(&hdr, 0, sizeof(hdr));
-    if (nfapi_p7_message_header_unpack((void*)msg, len, &hdr, sizeof(hdr), NULL) < 0) {
+    if (!nfapi_nr_p7_message_header_unpack((void*)msg, len, &hdr, sizeof(hdr), NULL)) {
         SM_Logs(LOG_ERROR, _P7_, "[OAI_VNF] seg header unpack failed; dropping.");
         return;
     }
@@ -316,9 +222,6 @@ static void oai_p7_handle_segmented(oai_vnf_t* v, const uint8_t* msg, uint32_t l
 
     if (!complete) {
         pthread_mutex_unlock(&v->seg_queue.mutex);
-        SM_Logs(LOG_DEBUG, _P7_,
-                "[OAI_VNF] seg seq=%u seg=%u more=%u (have %d/%d).",
-                seqn, segment, more, e->segments_present, expected);
         return;
     }
 
@@ -354,9 +257,6 @@ static void oai_p7_handle_segmented(oai_vnf_t* v, const uint8_t* msg, uint32_t l
     seg_entry_clear(e);
     pthread_mutex_unlock(&v->seg_queue.mutex);
 
-    SM_Logs(LOG_DEBUG, _P7_,
-            "[OAI_VNF] reassembled seq=%u into %u bytes (%d segments).",
-            seqn, total, expected);
     oai_p7_dispatch(v->ctx, full, total);
     free(full);
 }
@@ -369,7 +269,6 @@ static void* oai_p7_listener_thread(void* arg)
 {
     oai_vnf_t* v = (oai_vnf_t*)arg;
     AppContext* ctx = v->ctx;
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 listener thread started.");
 
     while (atomic_load(&v->running)) {
         fd_set rfds;
@@ -406,10 +305,10 @@ static void* oai_p7_listener_thread(void* arg)
             continue;
         }
 
-        nfapi_p7_message_header_t hdr;
+        nfapi_nr_p7_message_header_t hdr;
         memset(&hdr, 0, sizeof(hdr));
-        if (nfapi_p7_message_header_unpack(peek, sizeof(peek),
-                                           &hdr, sizeof(hdr), NULL) < 0) {
+        if (!nfapi_nr_p7_message_header_unpack(peek, sizeof(peek),
+                                               &hdr, sizeof(hdr), NULL)) {
             (void)recvfrom(v->p7_sock, peek, sizeof(peek), 0, NULL, NULL);
             SM_Logs(LOG_ERROR, _P7_, "[OAI_VNF] P7 peek header unpack failed.");
             continue;
@@ -459,7 +358,6 @@ static void* oai_p7_listener_thread(void* arg)
         itc_queue_push(&ctx->oai_ocudu_ctx.p7_rx_queue, item);
     }
 
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 listener thread exiting.");
     return NULL;
 }
 
@@ -467,7 +365,6 @@ static void* oai_p7_rx_task_thread(void* arg)
 {
     oai_vnf_t* v = (oai_vnf_t*)arg;
     AppContext* ctx = v->ctx;
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 rx_task thread started.");
 
     while (atomic_load(&v->running)) {
         oai_p7_rx_item_t* item =
@@ -505,7 +402,6 @@ static void* oai_p7_rx_task_thread(void* arg)
         free(item);
     }
 
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 rx_task thread exiting.");
     return NULL;
 }
 
@@ -544,7 +440,6 @@ int oai_p7_threads_start(oai_vnf_t* v)
         (void)pthread_setaffinity_np(v->rx_task_tid, sizeof(set), &set);
     }
 
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 threads (listener + rx_task) started.");
     return 0;
 }
 
@@ -557,7 +452,6 @@ void oai_p7_threads_stop(oai_vnf_t* v)
 
     pthread_join(v->p7_listener_tid, NULL);
     pthread_join(v->rx_task_tid, NULL);
-    SM_Logs(LOG_INFO, _P7_, "[OAI_VNF] P7 threads stopped.");
 }
 
 // ===========================================================================
@@ -590,7 +484,7 @@ int oai_vnf_send_p7(struct AppContext* ctx, nfapi_p7_message_header_t* header)
 
     // Stamp the sequence (single segment to start; pack may grow it).
     header->m_segment_sequence =
-        NFAPI_P7_SET_MSS(0, 0, (uint8_t)(v->p7_sequence & 0xFF));
+        NFAPI_NR_P7_SET_MSS(0, 0, (uint8_t)(v->p7_sequence & 0xFF));
 
     uint8_t buf[OAI_VNF_TX_BUF_SIZE];
     int len = nfapi_nr_p7_message_pack(header, buf, sizeof(buf), &v->p7_codec);
@@ -606,34 +500,32 @@ int oai_vnf_send_p7(struct AppContext* ctx, nfapi_p7_message_header_t* header)
         if (v->checksum_enabled) {
             nfapi_nr_p7_update_checksum(buf, (uint32_t)len);
         }
-        SM_Logs(LOG_DEBUG, _P7_,
-                "[OAI_VNF] -> P7 msg_id=0x%04x (%d bytes, single segment).",
-                header->message_id, len);
         rc = oai_p7_sendto(v, buf, (uint32_t)len);
     } else {
         // Segment: header carried on each segment, payload split.
         int body_len = len - NFAPI_NR_P7_HEADER_LENGTH;
         int seg_body = OAI_VNF_P7_SEGMENT_SIZE - NFAPI_NR_P7_HEADER_LENGTH;
         int seg_count = (body_len + seg_body - 1) / seg_body;
-        SM_Logs(LOG_DEBUG, _P7_,
-                "[OAI_VNF] -> P7 msg_id=0x%04x (%d bytes, %d segments).",
-                header->message_id, len, seg_count);
 
         uint8_t seg[OAI_VNF_P7_SEGMENT_SIZE];
         int offset = NFAPI_NR_P7_HEADER_LENGTH;
         for (int s = 0; s < seg_count; ++s) {
             int last = (s + 1 == seg_count);
             int size = last ? (body_len - seg_body * s) : seg_body;
-            uint16_t seg_total = (uint16_t)(size + NFAPI_NR_P7_HEADER_LENGTH);
+            uint32_t seg_total = (uint32_t)(size + NFAPI_NR_P7_HEADER_LENGTH);
 
             memcpy(seg, buf, NFAPI_NR_P7_HEADER_LENGTH);
-            // Patch message_length (bytes 4-5) and m_segment_sequence (6-7).
-            seg[4] = (uint8_t)((seg_total & 0xFF00) >> 8);
-            seg[5] = (uint8_t)(seg_total & 0x00FF);
-            uint16_t mss = NFAPI_P7_SET_MSS(last ? 0 : 1, (uint8_t)s,
-                                            (uint8_t)(v->p7_sequence & 0xFF));
-            seg[6] = (uint8_t)((mss & 0xFF00) >> 8);
-            seg[7] = (uint8_t)(mss & 0x00FF);
+            // NR P7 header (must match OAI PNF socket_pnf.c): message_length is
+            // big-endian u32 @ bytes 4-7; m_segment_sequence big-endian u16 @
+            // bytes 8-9. (Legacy LTE layout would desync the PNF.)
+            seg[4] = (uint8_t)((seg_total >> 24) & 0xFF);
+            seg[5] = (uint8_t)((seg_total >> 16) & 0xFF);
+            seg[6] = (uint8_t)((seg_total >> 8)  & 0xFF);
+            seg[7] = (uint8_t)( seg_total        & 0xFF);
+            uint16_t mss = NFAPI_NR_P7_SET_MSS(last ? 0 : 1, (uint8_t)s,
+                                               (uint8_t)(v->p7_sequence & 0xFF));
+            seg[8] = (uint8_t)((mss >> 8) & 0xFF);
+            seg[9] = (uint8_t)( mss       & 0xFF);
 
             memcpy(seg + NFAPI_NR_P7_HEADER_LENGTH, buf + offset, (size_t)size);
             offset += size;
