@@ -16,19 +16,20 @@
 <p align="center"><i>"Making the OpenRAN Truly Open."</i></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v2.1.0-blue" alt="Release v2.1.0"/>
+  <img src="https://img.shields.io/badge/release-v2.2.0-blue" alt="Release v2.2.0"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0"/>
 </p>
 
 ## Table of Contents
 - [Introduction](#introduction)
 - [Interoperability Issue in FAPI Interface](#interoperability-issue-in-fapi-interface)
-- [xFAPI Architecture](#xfapi-architecture)
+  - [xFAPI Architecture](#xfapi-architecture)
+- [Reference Architecture](#reference-architecture)
 - [Need of xFAPI](#need-of-xfapi)
-- [Current Status](#current-status)
+  - [OAI L1 - OCUDU L2 Topology](#oai-l1---ocudu-l2-topology)
+  - [OCUDU L1 - OCUDU L2 Topology](#ocudu-l1---ocudu-l2-topology)
   - [FlexRAN OSC DU-High Topology](#flexran-osc-du-high-topology)
   - [OAI L1 OSC DU-High Topology](#oai-l1-osc-du-high-topology)
-  - [OSC DU-High to OSC DU-High Topology](#osc-du-high-to-osc-du-high-topology)
 - [Additional Features](#additional-features)
 - [References](#references)
 - [Acknowledgements](#acknowledgements)
@@ -67,6 +68,14 @@ xFAPI is an interoperable component designed to enable seamless connectivity bet
 It acts as a bridge by facilitating communication across various inter-process communication (IPC) mechanisms, such as sockets and shared memory, while also providing translation between different API standards.
 
 By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures a vendor-agnostic Radio Access Network (RAN) stack, enhancing flexibility and interoperability within the ecosystem.
+
+#### OAI L1 - OCUDU L2 Topology
+
+- xFAPI bridges OAI L1 (nFAPI over sockets) with OCUDU L2 (xSM shared memory), translating between the two FAPI dialects and IPC mechanisms to achieve a full end-to-end connection.
+
+  - **Topology:** 3GPP-Compliant 5G Core + OCUDU CU + modified OCUDU L2 + xFAPI + OAI L1 + LiteON + COTS UE
+
+![oai-l1-ocudu-l2-topology](./docs/images/oai_ocudu_topology.png)
 
 #### OCUDU L1 - OCUDU L2 Topology
 
