@@ -21,6 +21,7 @@ option(FLEXRAN_OAI "Use FlexRAN as L1 and OAI as L2" OFF)
 option(AERIAL_OSC "Use Aerial as L1 and OSC as L2" OFF)
 option(OCUDU_OCUDU "Use OCUDU as L1 and OCUDU as L2 (xSM-bridged)" OFF)
 option(OAI_OCUDU "Use OAI as L1 (nFAPI/UDP) and OCUDU as L2 (xSM-bridged)" OFF)
+option(AERIAL_OCUDU "Use Aerial as L1 (SCF FAPI/nvIPC) and OCUDU as L2 (xSM-bridged)" OFF)
 option(L1_SIM_OAI_OSC "Simulated L1: OAI, L2: OSC" OFF)
 option(L1_SIM_OAI_OAI "Simulated L1: OAI, L2: OAI" OFF)
 option(L1_SIM_FRAN_OSC "Simulated L1: FlexRAN, L2: OSC" OFF)
@@ -31,7 +32,7 @@ option(L2_SIM_OSC_OAI "Simulated L2: OSC, L1: OAI" OFF)
 option(L2_SIM_OSC_FRAN "Simulated L2: OSC, L1: FlexRAN" OFF)
 
 # Define L1+L2 combinations
-foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU
+foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AERIAL_OCUDU
               L1_SIM_OAI_OSC L1_SIM_OAI_OAI L1_SIM_FRAN_OSC L1_SIM_FRAN_OAI
               L2_SIM_OAI_OAI L2_SIM_OAI_FRAN L2_SIM_OSC_OAI L2_SIM_OSC_FRAN)
     if(${mode})
@@ -214,6 +215,24 @@ if(OAI_OCUDU)
 endif()
 
 
+# Aerial L1 (SCF FAPI over nvIPC shared memory) + OCUDU L2 (xSM-bridged).
+# Mirrors OAI_OCUDU: xFAPI owns the "xsm_bridge" memzone (DPDK PRIMARY, xSM
+# SLAVE on pair 1 toward OCUDU-L2). The L1-facing side is the prebuilt nvIPC
+# library (xFAPI is the nvIPC SECONDARY; Aerial cuphycontroller is the PRIMARY).
+if(AERIAL_OCUDU)
+    message(STATUS "Adding sources for AERIAL_OCUDU mode")
+
+    list(APPEND SOURCES
+        src/framework/dpdk/dpdk_init.c
+        src/framework/aerial_l1_interface.c
+        src/framework/ocudu_l2_interface.c
+        src/core/AERIAL_OCUDU/aerial_nvipc.c
+        src/core/AERIAL_OCUDU/forwarder_l2_to_aerial.c
+        # Pulled in because main.c unconditionally references them.
+        src/utils/config/yaml_fail_check.c
+        src/utils/stats_generation/message_stats.c
+    )
+endif()
 
 
 
@@ -266,6 +285,55 @@ if(OAI_OCUDU)
     target_link_libraries(xfapi_main PRIVATE nfapi_codec sctp)
 endif()
 
+# AERIAL_OCUDU: expose the nvIPC library's public headers to our code and link
+# libnvipc.so into xfapi_main. Two layouts are supported, in priority order:
+# Override with -DNVIPC_DIR=<path> to point at an external nvIPC tree.
+if(AERIAL_OCUDU)
+    if(NOT NVIPC_DIR)
+        if(EXISTS "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC/libnvipc.so")
+            set(NVIPC_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC")
+        else()
+            set(NVIPC_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc")
+        endif()
+    endif()
+    set(NVIPC_LIB_PATH "${NVIPC_DIR}/libnvipc.so")
+    if(NOT EXISTS ${NVIPC_LIB_PATH})
+        message(FATAL_ERROR "libnvipc.so not found at ${NVIPC_LIB_PATH}. "
+                            "Build the nvIPC sources or pass -DNVIPC_DIR=<path>.")
+    endif()
+    # Headers may sit beside the library or in the vendored include/ dir.
+    if(EXISTS "${NVIPC_DIR}/include/nv_ipc.h")
+        set(NVIPC_INCLUDE_DIR "${NVIPC_DIR}/include")
+    else()
+        set(NVIPC_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/include")
+    endif()
+
+    target_include_directories(xfapi_main PRIVATE
+        ${NVIPC_INCLUDE_DIR}
+        ${PROJECT_SOURCE_DIR}/src/main
+        ${PROJECT_SOURCE_DIR}/src/core/AERIAL_OCUDU
+        # Message-stats serializers used by later P7 translators.
+        ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
+    )
+    target_link_libraries(xfapi_main PRIVATE ${NVIPC_LIB_PATH} pthread rt)
+
+    # A source-built libnvipc.so leaves nvlog/fmtlog/yaml-cpp undefined. Resolve
+    # them from the same tree at link and run time. The vendored blob defines
+    # them internally, so these lookups are optional and skipped when absent.
+    get_filename_component(NVIPC_PARENT "${NVIPC_DIR}" DIRECTORY)
+    foreach(_dep nvlog fmtlog-shared)
+        find_library(NVIPC_${_dep}_LIB NAMES ${_dep}
+                     HINTS ${NVIPC_DIR} ${NVIPC_PARENT} NO_DEFAULT_PATH)
+        if(NVIPC_${_dep}_LIB)
+            target_link_libraries(xfapi_main PRIVATE ${NVIPC_${_dep}_LIB})
+        endif()
+    endforeach()
+    set_target_properties(xfapi_main PROPERTIES
+        BUILD_RPATH "${NVIPC_DIR};${NVIPC_PARENT}"
+        INSTALL_RPATH "${NVIPC_DIR};${NVIPC_PARENT}"
+    )
+endif()
+
 # ===========================
 # Initialize Linker Dependencies
 # ===========================
@@ -289,7 +357,7 @@ endif()
 list(APPEND LINK_LIBS z)
 list(APPEND LINK_LIBS m)
 
-if(OAI_OSC OR FLEXRAN_OSC OR FLEXRAN_OAI OR AERIAL_OSC OR OCUDU_OCUDU OR OAI_OCUDU OR
+if(OAI_OSC OR FLEXRAN_OSC OR FLEXRAN_OAI OR AERIAL_OSC OR OCUDU_OCUDU OR OAI_OCUDU OR AERIAL_OCUDU OR
    L1_SIM_OAI_OSC OR L1_SIM_FRAN_OSC OR L2_SIM_OAI_FRAN OR L2_SIM_OSC_FRAN)
 
     set(DPDK_PATH $ENV{DPDK_PATH})
@@ -300,7 +368,7 @@ if(OAI_OSC OR FLEXRAN_OSC OR FLEXRAN_OAI OR AERIAL_OSC OR OCUDU_OCUDU OR OAI_OCU
 
     list(APPEND ENV{PKG_CONFIG_PATH} "${DPDK_PATH}/lib/x86_64-linux-gnu/pkgconfig")
 
-    if(OCUDU_OCUDU OR OAI_OCUDU)
+    if(OCUDU_OCUDU OR OAI_OCUDU OR AERIAL_OCUDU)
         set(XSM_LIB_DIR  "${PROJECT_SOURCE_DIR}/src/ipc/xsm")
         set(XSM_LIB_PATH "${XSM_LIB_DIR}/libxsm.so")
         if(NOT EXISTS ${XSM_LIB_PATH})

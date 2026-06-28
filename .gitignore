@@ -61,6 +61,11 @@ tmp/
 # never edited. Included/linked by the OAI_OCUDU build only.
 src/ipc/nfapi/
 
+# Third-party nvIPC library (prebuilt blob or in-tree build of the Aerial
+# nvIPC sources). Supplied per host. Included/linked by the AERIAL_OCUDU
+# build only.
+src/ipc/nvipc/
+
 # Tracked files that would otherwise be caught by the patterns above.
 !CMakeLists.txt
 !src/ipc/xsm/libxsm.so
