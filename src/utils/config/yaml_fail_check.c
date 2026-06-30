@@ -135,6 +135,53 @@ void print_config_table(const xFAPI_Config *config) {
 
 #endif
 
+#ifdef AERIAL_OCUDU
+
+void validate_and_fill_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
+    (void)flags;
+
+    if (config->ocudu_xsm_l2.device_name[0] == '\0') {
+        report_missing_critical_param("ocudu_xsm_l2.device_name");
+    }
+    if (config->ocudu_xsm_l2.memory_size == 0) {
+        report_missing_critical_param("ocudu_xsm_l2.memory_size");
+    }
+    if (config->nvipc.prefix[0] == '\0') {
+        report_missing_critical_param("nvipc.prefix");
+    }
+    if (config->aerial_forwarder.sched_policy[0] == '\0') {
+        strncpy(config->aerial_forwarder.sched_policy, "SCHED_OTHER",
+                sizeof(config->aerial_forwarder.sched_policy) - 1);
+    }
+    if (config->aerial_forwarder.priority < 0) {
+        config->aerial_forwarder.priority = 0;
+    }
+    if (config->dpdk_config.dpdk_memory_zone[0] == '\0') {
+        report_missing_critical_param("dpdk_config.dpdk_memory_zone");
+    }
+}
+
+void print_config_table(const xFAPI_Config *config) {
+    SM_Logs(LOG_INFO, _XFAPI_, "===== AERIAL_OCUDU configuration =====");
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK file-prefix:       %s",
+            config->dpdk_config.dpdk_memory_zone);
+    SM_Logs(LOG_INFO, _XFAPI_, "DPDK iova-mode:         %s",
+            config->dpdk_config.dpdk_iova_mode == 0 ? "PA" : "VA");
+    SM_Logs(LOG_INFO, _XFAPI_, "xSM L2 memzone:         %s (%lu bytes)",
+            config->ocudu_xsm_l2.device_name,
+            (unsigned long)config->ocudu_xsm_l2.memory_size);
+    SM_Logs(LOG_INFO, _XFAPI_, "nvIPC prefix:           %s", config->nvipc.prefix);
+    SM_Logs(LOG_INFO, _XFAPI_, "nvIPC rx mode:          %s",
+            config->nvipc.blocking ? "blocking (sem)" : "epoll (fd)");
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd recv/send core:     %d / %d",
+            config->aerial_forwarder.recv_core_id, config->aerial_forwarder.send_core_id);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd priority/policy:    %d / %s",
+            config->aerial_forwarder.priority, config->aerial_forwarder.sched_policy);
+    SM_Logs(LOG_INFO, _XFAPI_, "======================================");
+}
+
+#endif
+
 void validate_and_fill_sim_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
 
     if (!flags->simulation_mode.core_config.rx_task.core_id){

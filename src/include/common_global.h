@@ -84,7 +84,7 @@ typedef struct {
     uint64_t wls_shmem_size;
 } wls_config_t;
 
-#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
 
 typedef struct {
     char     device_name[64];
@@ -152,6 +152,28 @@ typedef struct {
 } oai_forwarder_config_t;
 #endif
 
+#ifdef AERIAL_OCUDU
+
+/* nvIPC client configuration (toward Aerial L1). xFAPI runs as the nvIPC
+ * SECONDARY (the role testMAC plays); Aerial cuphycontroller is the nvIPC
+ * PRIMARY that owns the shared-memory pools. The secondary only needs the SHM
+ * transport prefix — it auto-discovers the primary's pool layout at attach
+ * time — so the config is carried inline here (no separate nvIPC YAML). */
+typedef struct {
+    char prefix[32];         /* SHM prefix; must match Aerial's nvipc prefix  */
+    bool blocking;           /* 1 = rx_tti_sem_wait loop, 0 = epoll on get_fd */
+} nvipc_config_t;
+
+/* Forwarder thread settings for the AERIAL_OCUDU bridge. recv = Aerial->L2
+ * (nvIPC rx -> xSM), send = L2->Aerial (xSM -> nvIPC tx). */
+typedef struct {
+    int  recv_core_id;
+    int  send_core_id;
+    int  priority;
+    char sched_policy[20];
+} aerial_forwarder_config_t;
+#endif
+
 typedef struct {
     int mode;
     core_config_sim_mode_t core_config;
@@ -217,6 +239,11 @@ typedef struct {
     ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
     nfapi_socket_t                nfapi_socket;
     oai_forwarder_config_t        oai_forwarder;
+#endif
+#ifdef AERIAL_OCUDU
+    ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
+    nvipc_config_t                nvipc;
+    aerial_forwarder_config_t     aerial_forwarder;
 #endif
 } xFAPI_Config;
 

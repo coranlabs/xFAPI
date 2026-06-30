@@ -1,0 +1,81 @@
+# =============================================================================
+# XFAPI configuration — AERIAL_OCUDU bridge mode
+# =============================================================================
+# Bridges Aerial L1 (SCF FAPI over nvIPC shared memory) with OCUDU L2 (xSM
+# shared memory).
+#
+# Topology (single host):
+#   Aerial L1  <--nvIPC SHM (SCF FAPI)-->  XFAPI  <--xSM pair 1-->  OCUDU-L2
+#
+# XFAPI owns the "xsm_bridge" memzone (the role OCUDU-L1 plays in OCUDU_OCUDU):
+# it is DPDK PRIMARY on the file-prefix and xSM SLAVE on pair 1. OCUDU-L2
+# attaches as DPDK SECONDARY + xSM MASTER on pair 1.
+#
+# On the Aerial side, XFAPI is the nvIPC SECONDARY (the role testMAC plays);
+# Aerial cuphycontroller is the nvIPC PRIMARY that creates the SHM pools.
+#
+# Startup order: start XFAPI first (it creates the L2 memzone); start Aerial
+# (nvIPC PRIMARY) before/while XFAPI's nvIPC secondary retries the attach;
+# then start OCUDU-L2.
+
+# =============================================================================
+# DPDK configuration
+# =============================================================================
+# XFAPI is the DPDK PRIMARY here (Aerial is on nvIPC SHM, not DPDK).
+# file-prefix must match the prefix OCUDU-L2 attaches to.
+dpdk_config:
+  dpdk_iova_mode: 0           # 0 = PA, 1 = VA. Must match OCUDU-L2's setting.
+  dpdk_memory_zone: "gnb0"    # DPDK --file-prefix shared with OCUDU-L2.
+
+  # Parsed but ignored in AERIAL_OCUDU mode; left for YAML schema compatibility.
+  dpdk_device_1: "0000:00:00.0"
+  dpdk_device_2: "0000:00:00.0"
+
+# =============================================================================
+# xSM endpoint toward OCUDU-L2 (pair 1)
+# =============================================================================
+ocudu_xsm_l2:
+  device_name: "xsm_bridge"
+  memory_size: 2346713088     # ~2.18 GB
+  queue_capacity: 1024
+  return_queue_capacity: 1024
+
+# =============================================================================
+# nvIPC configuration (toward Aerial L1)
+# =============================================================================
+# XFAPI runs as the nvIPC SECONDARY. The secondary only needs the SHM prefix —
+# it auto-discovers the primary's pool layout at attach time — so the whole
+# nvIPC config lives here (no separate nvIPC YAML). The prefix must match Aerial
+# cuphycontroller's nvipc shm_config.prefix.
+nvipc:
+  prefix: "nvipc"             # must match Aerial's nvipc shm_config.prefix
+  blocking: false             # false = epoll(get_fd); true = rx_tti_sem_wait
+
+# =============================================================================
+# Forwarder thread settings
+# =============================================================================
+# recv = Aerial->L2 (nvIPC rx -> xSM put); send = L2->Aerial (xSM get -> nvIPC tx).
+#
+# MUST NOT collide with Aerial cuphycontroller's cores. From working_cuphy.yaml /
+# l2_adapter_config_P5G_DGX.yaml, Aerial pins:
+#   workers_ul [5,6]  workers_dl [7,8,9]  dpdk_thread/low_priority/pcap 10
+#   timer_thread 15   message_thread 16
+# OAI's nvIPC client ran its event_fd thread on core 17, so 17/18 are known-free.
+aerial_forwarder:
+  recv_core_id: 17          # nvIPC RX thread (Aerial -> L2)
+  send_core_id: 18          # xSM drain thread (L2 -> Aerial)
+  priority: 85
+  sched_policy: "SCHED_FIFO"
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  vertical_level: "INFO"     # NONE | WARN | INFO | DEBUG
+  horizontal_level:
+    xFAPI_log: true
+    xSM_log: true
+    P5_log: true
+    P7_log: true
+  print_config: true
+  print_datetime: true

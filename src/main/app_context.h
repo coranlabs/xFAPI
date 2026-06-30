@@ -23,7 +23,10 @@
 #ifdef OAI_OCUDU
 #include "../framework/oai_l1_interface.h"
 #endif
-#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
+#ifdef AERIAL_OCUDU
+#include "../framework/aerial_l1_interface.h"
+#endif
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
 #include "xsm/xsm.h"
 #include <stdbool.h>
 #include <stdatomic.h>
@@ -95,6 +98,35 @@ typedef struct {
 } OAIOCUDUContext;
 #endif
 
+#ifdef AERIAL_OCUDU
+
+/* Opaque nvIPC client state, defined in core/AERIAL_OCUDU/aerial_nvipc.h.
+ * Forward-declared here so AppContext can hold a pointer without pulling the
+ * nvIPC headers into every translation unit that includes app_context.h. */
+struct aerial_nvipc;
+
+typedef struct {
+    /* xSM handle toward OCUDU-L2 (pair 1). xFAPI owns the memzone (the role
+     * OCUDU-L1 plays in OCUDU_OCUDU) and is SLAVE on pair 1; OCUDU-L2
+     * attaches as MASTER on pair 1. */
+    xsm_handle_t* h_l2;
+    void*         region_l2;
+
+    /* nvIPC secondary runtime state (attach + Aerial->L2 RX loop + TX). */
+    struct aerial_nvipc* nvipc;
+
+    /* L2->Aerial forwarder thread: drains the OCUDU-L2 xSM queue and (later)
+     * translates + sends each message to Aerial over nvIPC. */
+    pthread_t     fwd_l2_to_aerial_tid;
+    atomic_int    fwd_l2_to_aerial_running;
+
+    /* Background thread that waits (observability only) for OCUDU-L2 to
+     * attach on pair 1, so the nvIPC client can come up without gating on L2. */
+    pthread_t     l2_peer_wait_tid;
+    int           l2_peer_wait_started;
+} AERIALOCUDUContext;
+#endif
+
 typedef struct AppContext {
     xFAPI_Config config;
     xFAPI_ConfigFlags config_flags;
@@ -109,6 +141,12 @@ typedef struct AppContext {
 #ifdef OAI_OCUDU
     OAIOCUDUContext           oai_ocudu_ctx;
     const OAI_L1_Interface*   oai_l1_ctx;
+    const OCUDU_L2_Interface* ocudu_l2_ctx;   /* L2 is still OCUDU; reuse vtable */
+#endif
+
+#ifdef AERIAL_OCUDU
+    AERIALOCUDUContext        aerial_ocudu_ctx;
+    const AERIAL_L1_Interface* aerial_l1_ctx;
     const OCUDU_L2_Interface* ocudu_l2_ctx;   /* L2 is still OCUDU; reuse vtable */
 #endif
 

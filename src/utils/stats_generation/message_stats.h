@@ -48,6 +48,8 @@ uint64_t get_timestamp_ns(void);
 // max_len). Used to fill the message_content field consumed by the XFAPI
 // dashboard. `msg_ptr` points at the matching nfapi_nr_*_t built by the
 // L2->L1 / L1->L2 translators. Ported from the XFAPI message-stats reference.
+// Defined only for OAI_OCUDU (the mode that provides the open-nFAPI headers).
+#ifdef OAI_OCUDU
 void serialize_nfapi_dl_tti_request_message(char* output, int max_len, const void* msg_ptr);
 void serialize_nfapi_ul_tti_request_message(char* output, int max_len, const void* msg_ptr);
 void serialize_nfapi_ul_dci_request_message(char* output, int max_len, const void* msg_ptr);
@@ -56,5 +58,6 @@ void serialize_nfapi_rx_data_indication_message(char* output, int max_len, const
 void serialize_nfapi_crc_indication_message(char* output, int max_len, const void* msg_ptr);
 void serialize_nfapi_uci_indication_message(char* output, int max_len, const void* msg_ptr);
 void serialize_nfapi_rach_indication_message(char* output, int max_len, const void* msg_ptr);
+#endif /* OAI_OCUDU */
 
 #endif

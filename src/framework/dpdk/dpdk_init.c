@@ -16,7 +16,7 @@
 #include "rte_memzone.h"
 #include <rte_eal.h>
 
-#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
 
 uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
 {
@@ -35,8 +35,9 @@ uint8_t dpdk_init_ocudu_bridge(xFAPI_Config *g_config)
     /* In OCUDU_OCUDU, OCUDU-L1 is the DPDK PRIMARY and owns the memzone;
      * xFAPI attaches as SECONDARY. In OAI_OCUDU there is no OCUDU-L1 (OAI is
      * on UDP), so xFAPI itself creates the memzone as PRIMARY; OCUDU-L2
-     * then attaches as SECONDARY. */
-#ifdef OAI_OCUDU
+     * then attaches as SECONDARY. AERIAL_OCUDU is identical: Aerial L1 is on
+     * nvIPC SHM (not DPDK), so xFAPI is the DPDK PRIMARY for the L2 memzone. */
+#if defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
     const char *proc_type = "--proc-type=primary";
     const char *role_label = "PRIMARY";
 #else

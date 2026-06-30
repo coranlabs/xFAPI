@@ -23,6 +23,10 @@
 #include "../core/OAI_OCUDU/forwarder_l2_to_oai.h"
 #include "../framework/dpdk/dpdk_init.h"
 #endif
+#ifdef AERIAL_OCUDU
+#include "../core/AERIAL_OCUDU/forwarder_l2_to_aerial.h"
+#include "../framework/dpdk/dpdk_init.h"
+#endif
 
 static void app_select_interfaces(AppContext* ctx) {
 #ifdef OCUDU_OCUDU
@@ -34,6 +38,11 @@ static void app_select_interfaces(AppContext* ctx) {
     SM_Logs(LOG_INFO, _XFAPI_, "Selecting OAI L1 (nFAPI) + OCUDU L2 (xSM) interfaces.");
     ctx->oai_l1_ctx   = get_oai_l1_interface();
     ctx->ocudu_l2_ctx = get_ocudu_l2_interface();
+    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
+#elif defined(AERIAL_OCUDU)
+    SM_Logs(LOG_INFO, _XFAPI_, "Selecting Aerial L1 (nvIPC) + OCUDU L2 (xSM) interfaces.");
+    ctx->aerial_l1_ctx = get_aerial_l1_interface();
+    ctx->ocudu_l2_ctx  = get_ocudu_l2_interface();
     SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No valid mode defined!");
@@ -98,6 +107,36 @@ int app_init(AppContext* ctx) {
         return -1;
     }
     return 0;
+#elif defined(AERIAL_OCUDU)
+
+    if (dpdk_init_ocudu_bridge(&ctx->config) != SUCCESS) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "DPDK init failed for AERIAL_OCUDU mode.");
+        return -1;
+    }
+    if (!ctx->aerial_l1_ctx || !ctx->ocudu_l2_ctx) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "Aerial L1 / OCUDU L2 interfaces not selected.");
+        return -1;
+    }
+    /* L1 init opens the L2 xSM handle AND starts the nvIPC secondary client
+     * (which attaches to the Aerial PRIMARY in the background). */
+    if (ctx->aerial_l1_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "Aerial L1 endpoint init failed.");
+        return -1;
+    }
+    /* L2 init is a no-op (xSM handle is opened in L1 init); keep flow symmetric. */
+    if (ctx->ocudu_l2_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OCUDU L2 endpoint init failed.");
+        ctx->aerial_l1_ctx->destroy(ctx);
+        return -1;
+    }
+    /* L2->Aerial forwarder: drains the OCUDU-L2 xSM queue and (later) sends the
+     * translated SCF FAPI message over nvIPC. The Aerial->L2 (uplink)
+     * direction is handled inside the nvIPC client's RX thread. */
+    if (ocudu_fwd_l2_to_aerial_start(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "AERIAL_OCUDU L2->Aerial forwarder start failed.");
+        return -1;
+    }
+    return 0;
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No build mode defined.");
     return -1;
@@ -131,6 +170,15 @@ void app_destroy(AppContext* ctx) {
     /* oai_l1_ctx->destroy stops the VNF (P5/P7 threads) and closes L2 xSM. */
     if (ctx->oai_l1_ctx && ctx->oai_l1_ctx->destroy) {
         ctx->oai_l1_ctx->destroy(ctx);
+    }
+#elif defined(AERIAL_OCUDU)
+    ocudu_fwd_l2_to_aerial_stop(ctx);
+    if (ctx->ocudu_l2_ctx && ctx->ocudu_l2_ctx->destroy) {
+        ctx->ocudu_l2_ctx->destroy(ctx);
+    }
+    /* aerial_l1_ctx->destroy stops the nvIPC client and closes L2 xSM. */
+    if (ctx->aerial_l1_ctx && ctx->aerial_l1_ctx->destroy) {
+        ctx->aerial_l1_ctx->destroy(ctx);
     }
 #else
 

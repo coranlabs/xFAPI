@@ -324,7 +324,7 @@ void parse_wls_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigF
     }
 }
 
-#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU)
+#if defined(OCUDU_OCUDU) || defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
 
 static void parse_ocudu_xsm_endpoint_config(yaml_parser_t *parser,
                                             ocudu_xsm_endpoint_config_t *ep) {
@@ -380,7 +380,7 @@ static void parse_ocudu_xsm_endpoint_config(yaml_parser_t *parser,
     }
 }
 
-#endif /* OCUDU_OCUDU || OAI_OCUDU */
+#endif /* OCUDU_OCUDU || OAI_OCUDU || AERIAL_OCUDU */
 
 #ifdef OCUDU_OCUDU
 
@@ -585,6 +585,124 @@ void parse_oai_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
     }
 }
 #endif /* OAI_OCUDU */
+
+#ifdef AERIAL_OCUDU
+
+void parse_ocudu_xsm_l2_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    parse_ocudu_xsm_endpoint_config(parser, &config->ocudu_xsm_l2);
+}
+
+void parse_nvipc_config(yaml_parser_t *parser, xFAPI_Config *config,
+                        xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in nvipc\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "prefix") == 0) {
+                        strncpy(config->nvipc.prefix, val,
+                                sizeof(config->nvipc.prefix) - 1);
+                        config->nvipc.prefix[sizeof(config->nvipc.prefix) - 1] = '\0';
+                    } else if (strcmp(current_key, "blocking") == 0) {
+                        config->nvipc.blocking = parse_yaml_bool(val);
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_nvipc_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+
+void parse_aerial_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                   xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0;
+    int depth = 0;
+    char current_key[64] = "";
+    int expecting_key = 1;
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in aerial_forwarder\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT:
+                depth++;
+                expecting_key = 1;
+                break;
+            case YAML_MAPPING_END_EVENT:
+                depth--;
+                if (depth == 0) {
+                    done = 1;
+                }
+                break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "recv_core_id") == 0) {
+                        config->aerial_forwarder.recv_core_id = atoi(val);
+                    } else if (strcmp(current_key, "send_core_id") == 0) {
+                        config->aerial_forwarder.send_core_id = atoi(val);
+                    } else if (strcmp(current_key, "priority") == 0) {
+                        config->aerial_forwarder.priority = atoi(val);
+                    } else if (strcmp(current_key, "sched_policy") == 0) {
+                        strncpy(config->aerial_forwarder.sched_policy, val,
+                                sizeof(config->aerial_forwarder.sched_policy) - 1);
+                        config->aerial_forwarder.sched_policy[
+                            sizeof(config->aerial_forwarder.sched_policy) - 1] = '\0';
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_aerial_forwarder_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default:
+                break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+#endif /* AERIAL_OCUDU */
 
 void parse_simulation_mode_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigFlags *config_flags) {
     yaml_event_t event;
@@ -1036,6 +1154,18 @@ int parse_yaml_main(const char *filename, AppContext *app_ctx) {
                         expecting_key = 1;
                     } else if (strcmp(current_top_key, "oai_forwarder") == 0) {
                         parse_oai_forwarder_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    }
+#endif
+#ifdef AERIAL_OCUDU
+                    else if (strcmp(current_top_key, "ocudu_xsm_l2") == 0) {
+                        parse_ocudu_xsm_l2_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "nvipc") == 0) {
+                        parse_nvipc_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "aerial_forwarder") == 0) {
+                        parse_aerial_forwarder_config(&parser, config, config_flags);
                         expecting_key = 1;
                     }
 #endif

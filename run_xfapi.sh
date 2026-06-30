@@ -16,7 +16,7 @@
 
 
 # --- Configuration Paths ---
-MAIN_CONFIG_FILE="conf/oai_ocudu_config.yaml"
+MAIN_CONFIG_FILE="conf/aerial_ocudu_config.yaml"
 SIM_CONFIG_FILE=""
 # --- End Configuration Paths ---
 
@@ -39,6 +39,12 @@ show_help() {
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     show_help
     exit 0
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Error: xfapi_main must run as root (DPDK PA-mode IOVA and /dev/hugepages)."
+    echo "Re-run with: sudo $0"
+    exit 1
 fi
 
 # Check if binary exists

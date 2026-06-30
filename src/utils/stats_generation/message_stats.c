@@ -21,9 +21,13 @@
 
 // nFAPI struct definitions consumed by the serialize_nfapi_* helpers below.
 // These are the open-nFAPI SCF interface headers (same lineage XFAPI used),
-// exposed to xfapi_main via its include dirs.
+// exposed to xfapi_main via its include dirs. Only the OAI_OCUDU mode pulls in
+// the open-nFAPI tree and uses these serializers; other modes (e.g.
+// AERIAL_OCUDU) build message_stats.c for its core API only.
+#ifdef OAI_OCUDU
 #include "nfapi_interface.h"
 #include "nfapi_nr_interface_scf.h"
+#endif
 
 #ifndef CLOCK_REALTIME
 #define CLOCK_REALTIME 0
@@ -137,6 +141,9 @@ void dump_message_stats_to_json(void) {
 
 // nFAPI message serializers: each renders the translated nFAPI struct into a
 // human-readable key=value dump used as the dashboard's message_content.
+// Compiled only for OAI_OCUDU (the mode that provides the open-nFAPI headers
+// and calls these from its P7 translators).
+#ifdef OAI_OCUDU
 
 void serialize_nfapi_dl_tti_request_message(char* output, int max_len, const void* msg_ptr) {
     const nfapi_nr_dl_tti_request_t* nfapi_dl_tti = (const nfapi_nr_dl_tti_request_t*)msg_ptr;
@@ -1319,3 +1326,5 @@ void serialize_nfapi_rach_indication_message(char* output, int max_len, const vo
     }
 }
 
+
+#endif /* OAI_OCUDU */
