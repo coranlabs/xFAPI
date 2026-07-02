@@ -34,7 +34,11 @@
 #include <sys/epoll.h>
 
 #include "../../main/app_context.h"
+#include "aerial_l1_to_l2_p5.h"
+#include "aerial_l1_to_l2_p7.h"
 #include "unified_logger.h"
+
+#include "nfapi_nr_interface_scf.h"
 
 #define AERIAL_NVIPC_EPOLL_MAX_EVENTS   8
 #define AERIAL_NVIPC_EPOLL_TIMEOUT_MS   1000
@@ -103,15 +107,55 @@ static int aerial_nvipc_attach(aerial_nvipc_t* nv)
 // ---------------------------------------------------------------------------
 // RX: handle one received nvIPC message. Scaffold: log + (later) translate.
 // ---------------------------------------------------------------------------
+// Body of an SCF message starts after the 8-byte prologue; for the control
+// responses the first body byte is the error_code.
+static uint8_t aerial_scf_error_code(const nv_ipc_msg_t* msg)
+{
+    if (msg->msg_buf == NULL ||
+        (uint32_t)msg->msg_len <= AERIAL_SCF_MSG_HDR_SIZE) {
+        return 0;
+    }
+    return ((const uint8_t*)msg->msg_buf)[AERIAL_SCF_MSG_HDR_SIZE];
+}
+
 static void aerial_nvipc_handle_rx(aerial_nvipc_t* nv, const nv_ipc_msg_t* msg)
 {
+    AppContext* ctx = nv->ctx;
     atomic_fetch_add(&nv->rx_count, 1u);
-    SM_Logs(LOG_DEBUG, _P7_,
-            "[AERIAL_OCUDU Aerial->L2] nvIPC rx msg_id=0x%02x cell=%d "
-            "msg_len=%d data_len=%d (translation TODO)",
-            msg->msg_id, msg->cell_id, msg->msg_len, msg->data_len);
-    // TODO(milestone 2+): translate SCF FAPI -> OCUDU-FAPI and push into the
-    // OCUDU-L2 xSM queue.
+
+    switch (msg->msg_id) {
+        case NFAPI_NR_PHY_MSG_TYPE_PARAM_RESPONSE: {
+            uint8_t err = aerial_scf_error_code(msg);
+            SM_Logs(LOG_INFO, _P5_,
+                    "[L1->L2 P5] PARAM.response from Aerial (error_code=0x%02x).",
+                    err);
+            (void)aerial_l1l2_param_response(ctx, err);
+            break;
+        }
+        case NFAPI_NR_PHY_MSG_TYPE_CONFIG_RESPONSE: {
+            uint8_t err = aerial_scf_error_code(msg);
+            SM_Logs(LOG_INFO, _P5_,
+                    "[L1->L2 P5] CONFIG.response from Aerial (error_code=0x%02x).",
+                    err);
+            (void)aerial_l1l2_config_response(ctx, err);
+            break;
+        }
+        case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
+            (void)aerial_l1l2_slot_indication(ctx, (const uint8_t*)msg->msg_buf,
+                                              (uint32_t)msg->msg_len);
+            break;
+        case NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION:
+            SM_Logs(LOG_ERROR, _P5_,
+                    "[L1->L2] Aerial ERROR.indication (msg_len=%d).",
+                    msg->msg_len);
+            break;
+        default:
+            SM_Logs(LOG_DEBUG, _P7_,
+                    "[AERIAL_OCUDU Aerial->L2] nvIPC rx msg_id=0x%02x cell=%d "
+                    "msg_len=%d data_len=%d (no translator yet).",
+                    msg->msg_id, msg->cell_id, msg->msg_len, msg->data_len);
+            break;
+    }
 }
 
 // Drain all currently-available nvIPC RX messages.

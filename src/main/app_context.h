@@ -115,6 +115,12 @@ typedef struct {
     /* nvIPC secondary runtime state (attach + Aerial->L2 RX loop + TX). */
     struct aerial_nvipc* nvipc;
 
+    /* Cell state latched from CONFIG.request. SLOT.indication needs mu to
+     * rebuild OCUDU's slot_point; OCUDU's UL PRACH PDU carries no pci. */
+    int           cell_id;
+    int           cell_numerology;
+    int           cell_pci;
+
     /* L2->Aerial forwarder thread: drains the OCUDU-L2 xSM queue and (later)
      * translates + sends each message to Aerial over nvIPC. */
     pthread_t     fwd_l2_to_aerial_tid;

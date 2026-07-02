@@ -227,11 +227,71 @@ if(AERIAL_OCUDU)
         src/framework/aerial_l1_interface.c
         src/framework/ocudu_l2_interface.c
         src/core/AERIAL_OCUDU/aerial_nvipc.c
+        src/core/AERIAL_OCUDU/aerial_send.c
         src/core/AERIAL_OCUDU/forwarder_l2_to_aerial.c
+        # OCUDU-FAPI <-> SCF-FAPI translation layer.
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/aerial_l2_to_l1_p5.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/param_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/config_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/start_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/stop_request.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/aerial_l1_to_l2_p5.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/param_response.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/config_response.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/slot_indication.c
         # Pulled in because main.c unconditionally references them.
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
     )
+
+    # -------------------------------------------------------------------
+    # Third-party nFAPI codec, built for Aerial. The SCF FAPI wire format
+    # cuphycontroller parses is exactly what open-nFAPI emits when compiled
+    # with ENABLE_AERIAL, so the codec replaces a hand-written SCF encoder.
+    # Mirror OAI's own flags (nfapi/open-nFAPI/fapi/CMakeLists.txt):
+    #   nr_fapi_p5 -> ENABLE_AERIAL ENABLE_10_04
+    #   nr_fapi_p7 -> ENABLE_AERIAL
+    # ENABLE_10_04 does not alter any public struct, so xfapi_main only needs
+    # ENABLE_AERIAL to see the vendor TLV tags.
+    # -------------------------------------------------------------------
+    set(NFAPI_DIR     "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
+    set(NFAPI_UP      "${NFAPI_DIR}/open-nFAPI")
+    set(NFAPI_OAICOM  "${NFAPI_DIR}/oai_common")
+
+    set(NFAPI_AERIAL_SOURCES
+        ${NFAPI_UP}/common/src/nfapi.c
+        ${NFAPI_UP}/common/src/debug.c
+        ${NFAPI_UP}/fapi/src/nr_fapi.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7_utils.c
+        ${NFAPI_OAICOM}/minimal_stub.c
+    )
+
+    add_library(nfapi_codec SHARED ${NFAPI_AERIAL_SOURCES})
+    target_include_directories(nfapi_codec PUBLIC
+        ${NFAPI_DIR}
+        ${NFAPI_UP}/nfapi/public_inc
+        ${NFAPI_UP}/common/public_inc
+        ${NFAPI_UP}/fapi/inc
+        ${NFAPI_OAICOM}
+        ${NFAPI_OAICOM}/common/utils
+    )
+    target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
+    # FAPI_BYTE_ORDERING_BIG_ENDIAN is misnamed: it selects the LITTLE-endian
+    # branch of push16/push32/pull* in common/src/nfapi.c, which is what Aerial
+    # needs since cuphycontroller reads the SCF structs natively. OAI sets the
+    # same define on nfapi_common whenever OAI_AERIAL is on. Without it the
+    # packed type_id and body length reach Aerial byte-swapped.
+    target_compile_definitions(nfapi_codec PUBLIC
+        MAX_NUM_CCs=1 ENABLE_AERIAL FAPI_BYTE_ORDERING_BIG_ENDIAN)
+    set_source_files_properties(
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
+        PROPERTIES COMPILE_DEFINITIONS "ENABLE_10_04")
+    target_compile_options(nfapi_codec PRIVATE -w)
+    target_link_libraries(nfapi_codec PUBLIC z pthread m)
 endif()
 
 
@@ -308,14 +368,26 @@ if(AERIAL_OCUDU)
         set(NVIPC_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/include")
     endif()
 
+    set(NFAPI_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
     target_include_directories(xfapi_main PRIVATE
         ${NVIPC_INCLUDE_DIR}
+        ${PROJECT_SOURCE_DIR}/src/ipc
+        ${NFAPI_DIR}
+        ${NFAPI_DIR}/open-nFAPI/nfapi/public_inc
+        ${NFAPI_DIR}/open-nFAPI/common/public_inc
+        ${NFAPI_DIR}/open-nFAPI/fapi/inc
+        ${NFAPI_DIR}/oai_common
+        ${NFAPI_DIR}/oai_common/common/utils
         ${PROJECT_SOURCE_DIR}/src/main
         ${PROJECT_SOURCE_DIR}/src/core/AERIAL_OCUDU
+        ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU
+        ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU/L2_to_L1
+        ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU/L1_to_L2
         # Message-stats serializers used by later P7 translators.
         ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
     )
-    target_link_libraries(xfapi_main PRIVATE ${NVIPC_LIB_PATH} pthread rt)
+    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_AERIAL)
+    target_link_libraries(xfapi_main PRIVATE nfapi_codec ${NVIPC_LIB_PATH} pthread rt)
 
     # A source-built libnvipc.so leaves nvlog/fmtlog/yaml-cpp undefined. Resolve
     # them from the same tree at link and run time. The vendored blob defines

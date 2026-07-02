@@ -33,23 +33,21 @@
 
 #include "../../main/app_context.h"
 #include "aerial_nvipc.h"
+#include "aerial_l2_to_l1_p5.h"
 #include "unified_logger.h"
 
 #define FAPI_P7_TYPE_THRESHOLD 0x80
 
-// Forward one OCUDU-L2 message toward Aerial. Scaffold: log + drop. The routing
-// shape (P5 control < 0x80, P7 data >= 0x80) mirrors the OAI_OCUDU forwarder so
-// the translation layer can slot in unchanged later.
 static void l2_to_aerial_forward(AppContext* ctx, uint16_t type_id,
                                  const void* payload, uint32_t len)
 {
-    (void)ctx; (void)payload;
-    const char* plane = (type_id >= FAPI_P7_TYPE_THRESHOLD) ? "P7" : "P5";
-    SM_Logs(LOG_DEBUG, _XFAPI_,
-            "[AERIAL_OCUDU L2->Aerial] %s msg type=0x%04x len=%u "
-            "(translation TODO)", plane, type_id, len);
-    // TODO(milestone 2+): translate OCUDU-FAPI -> SCF FAPI and call
-    // aerial_nvipc_send(ctx, scf_msg_id, cell_id, msg_buf, msg_len, data, dlen).
+    if (type_id >= FAPI_P7_TYPE_THRESHOLD) {
+        SM_Logs(LOG_DEBUG, _P7_,
+                "[AERIAL_OCUDU L2->Aerial] P7 msg type=0x%04x len=%u "
+                "(no translator yet); dropping.", type_id, len);
+        return;
+    }
+    (void)aerial_p5_translate_and_send(ctx, type_id, payload, len);
 }
 
 static void* fwd_l2_to_aerial_main(void* arg)
