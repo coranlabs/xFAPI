@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OCUDU nvIPC secondary client. Scaffold milestone: brings up the
-// secondary attach toward the Aerial PRIMARY and drains the RX queue, logging
-// each SCF FAPI message. SCF-FAPI <-> OCUDU-FAPI translation is layered on in
-// later milestones (see src/translation/AERIAL_L1_OCUDU/).
+// AERIAL_OCUDU nvIPC secondary client: attaches to the Aerial PRIMARY, drains
+// the RX queue and routes each SCF FAPI message to its translator.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -104,11 +102,6 @@ static int aerial_nvipc_attach(aerial_nvipc_t* nv)
     return -1;
 }
 
-// ---------------------------------------------------------------------------
-// RX: handle one received nvIPC message. Scaffold: log + (later) translate.
-// ---------------------------------------------------------------------------
-// Body of an SCF message starts after the 8-byte prologue; for the control
-// responses the first body byte is the error_code.
 static uint8_t aerial_scf_error_code(const nv_ipc_msg_t* msg)
 {
     if (msg->msg_buf == NULL ||
@@ -144,11 +137,23 @@ static void aerial_nvipc_handle_rx(aerial_nvipc_t* nv, const nv_ipc_msg_t* msg)
             (void)aerial_l1l2_slot_indication(ctx, (const uint8_t*)msg->msg_buf,
                                               (uint32_t)msg->msg_len);
             break;
-        case NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION:
-            SM_Logs(LOG_ERROR, _P5_,
-                    "[L1->L2] Aerial ERROR.indication (msg_len=%d).",
-                    msg->msg_len);
+        case NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION: {
+            const uint8_t* b = (const uint8_t*)msg->msg_buf + AERIAL_SCF_MSG_HDR_SIZE;
+            if ((uint32_t)msg->msg_len >= AERIAL_SCF_MSG_HDR_SIZE + 6u) {
+                uint16_t sfn, slot;
+                memcpy(&sfn, b, 2);
+                memcpy(&slot, b + 2, 2);
+                SM_Logs(LOG_ERROR, _P7_,
+                        "[L1->L2] Aerial ERROR.indication SFN %u.%u "
+                        "msg_id=0x%02x err_code=0x%02x.",
+                        sfn, slot, b[4], b[5]);
+            } else {
+                SM_Logs(LOG_ERROR, _P7_,
+                        "[L1->L2] Aerial ERROR.indication (msg_len=%d).",
+                        msg->msg_len);
+            }
             break;
+        }
         default:
             SM_Logs(LOG_DEBUG, _P7_,
                     "[AERIAL_OCUDU Aerial->L2] nvIPC rx msg_id=0x%02x cell=%d "

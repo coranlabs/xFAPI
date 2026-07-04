@@ -221,6 +221,8 @@ int aerial_l2l1_config_request(struct AppContext* ctx,
     // Latch the phys_cell_id for the P7 UL_TTI PRACH translator (OCUDU's UL
     // PRACH PDU carries no pci; the nFAPI PRACH PDU requires it).
     ctx->aerial_ocudu_ctx.cell_pci = (int)pci;
+    // Carrier size in PRB, needed to clamp CSI-RS to what cuPHY supports.
+    ctx->aerial_ocudu_ctx.cell_dl_grid = (int)dl_grid[mu];
 
     // ---- Build nFAPI CONFIG.request ----
     nfapi_nr_config_request_scf_t* req =

@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OCUDU P5 L2->L1 dispatcher.
+// AERIAL_OCUDU P7 L2->L1 dispatcher: parse the OCUDU xSM data-plane message and
+// route it to the matching OCUDU-FAPI -> nFAPI translator.
 
-#include "aerial_l2_to_l1_p5.h"
+#include "aerial_l2_to_l1_p7.h"
 
 #ifdef AERIAL_OCUDU
 
 #include "ocudu_fapi_wire.h"
 #include "unified_logger.h"
 
-int aerial_p5_translate_and_send(struct AppContext* ctx, uint16_t type_id,
-                                const void* src_va, uint32_t size)
+int aerial_p7_translate_and_send(struct AppContext* ctx,
+                                uint16_t type_id, const void* src_va,
+                                uint32_t size)
 {
     if (ctx == NULL || src_va == NULL) {
         return -1;
@@ -33,26 +35,29 @@ int aerial_p5_translate_and_send(struct AppContext* ctx, uint16_t type_id,
     uint32_t       body_len = 0;
     if (ocudu_xsm_hdr_parse((const uint8_t*)src_va, size,
                             &msg_type, &body, &body_len) != 0) {
-        SM_Logs(LOG_ERROR, _P5_,
-                "[L2->L1 P5] short/invalid OCUDU msg (type_id=0x%04x size=%u).",
+        SM_Logs(LOG_ERROR, _P7_,
+                "[L2->L1 P7] short/invalid OCUDU msg (type_id=0x%04x size=%u).",
                 type_id, size);
         return -1;
     }
 
     switch (msg_type) {
-        case OCUDU_FAPI_PARAM_REQUEST:
-            return aerial_l2l1_param_request(ctx, body, body_len);
-        case OCUDU_FAPI_CONFIG_REQUEST:
-            return aerial_l2l1_config_request(ctx, body, body_len);
-        case OCUDU_FAPI_START_REQUEST:
-            return aerial_l2l1_start_request(ctx, body, body_len);
-        case OCUDU_FAPI_STOP_REQUEST:
-            return aerial_l2l1_stop_request(ctx, body, body_len);
+        case OCUDU_FAPI_DL_TTI_REQUEST:
+            return aerial_l2l1_dl_tti_request(ctx, body, body_len);
+
+        case OCUDU_FAPI_TX_DATA_REQUEST:
+            return aerial_l2l1_tx_data_request(ctx, body, body_len);
+
+        case OCUDU_FAPI_UL_TTI_REQUEST:
+            return aerial_l2l1_ul_tti_request(ctx, body, body_len);
+
+        case OCUDU_FAPI_UL_DCI_REQUEST:
+            return aerial_l2l1_ul_dci_request(ctx, body, body_len);
+
+        // End-of-slot sentinel (P7_LAST_MESSAGE) and any untranslated msg_type are
+        // dropped; never forward raw OCUDU-FAPI bytes to OAI (different P7 dialect).
         default:
-            SM_Logs(LOG_WARN, _P5_,
-                    "[L2->L1 P5] unhandled OCUDU msg_type=0x%02x (len=%u); "
-                    "dropping.", msg_type, body_len);
-            return -1;
+            return 0;
     }
 }
 

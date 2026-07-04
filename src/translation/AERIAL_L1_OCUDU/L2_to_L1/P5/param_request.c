@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OCUDU PARAM.request (0x00) -> answered locally by xFAPI.
-//
-// Aerial parses PARAM.request but never answers it: cuphycontroller's
-// on_param_request() only logs "PARAM.req is not supported yet" and returns,
-// so forwarding it would leave OCUDU-L2 waiting forever and it would never
-// send CONFIG.request. (This is why OAI's Aerial mode skips PARAM entirely.)
-// xFAPI therefore terminates the exchange here and returns a success
-// PARAM.response to OCUDU-L2 so the handshake advances to CONFIG.request.
+// OCUDU PARAM.request (0x00) is answered locally: Aerial's on_param_request()
+// only logs "PARAM.req is not supported yet" and never replies, so forwarding
+// it would stall OCUDU-L2 before CONFIG.request.
 
 #include "aerial_l2_to_l1_p5.h"
 

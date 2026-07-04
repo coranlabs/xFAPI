@@ -17,9 +17,8 @@
 
 struct AppContext;
 
-/* OCUDU-L2 -> Aerial: drain the OCUDU-L2 xSM queue and (eventually) translate
- * each OCUDU-FAPI message to SCF FAPI and send it over nvIPC to Aerial L1.
- * Scaffold milestone: drains + logs only; translation is added later. */
+/* OCUDU-L2 -> Aerial: drain the OCUDU-L2 xSM queue, translate each OCUDU-FAPI
+ * message to SCF FAPI and send it over nvIPC to Aerial L1. */
 int  ocudu_fwd_l2_to_aerial_start(struct AppContext* ctx);
 void ocudu_fwd_l2_to_aerial_stop(struct AppContext* ctx);
 

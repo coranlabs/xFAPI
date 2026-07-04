@@ -27,5 +27,9 @@ struct AppContext;
 int aerial_send_p5_msg(struct AppContext* ctx, void* nfapi_p5_hdr,
                        uint32_t msg_len);
 
+// Same for P7. TX_DATA.request carries its transport blocks in the nvIPC
+// data_buf; every other P7 message is msg_buf only.
+int aerial_send_p7_msg(struct AppContext* ctx, void* nfapi_p7_hdr);
+
 #endif /* AERIAL_OCUDU */
 #endif /* AERIAL_OCUDU_AERIAL_SEND_H */

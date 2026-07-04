@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// OCUDU-L2 -> Aerial forwarder (AERIAL_OCUDU mode): drain the OCUDU-L2 xSM
-// queue. Scaffold milestone: each OCUDU-FAPI message is logged and dropped.
-// Later milestones translate OCUDU-FAPI -> SCF FAPI and forward over nvIPC via
-// aerial_nvipc_send().
+// OCUDU-L2 -> Aerial forwarder: drain the OCUDU-L2 xSM queue and route each
+// message to the P5 or P7 translator.
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -34,6 +32,7 @@
 #include "../../main/app_context.h"
 #include "aerial_nvipc.h"
 #include "aerial_l2_to_l1_p5.h"
+#include "aerial_l2_to_l1_p7.h"
 #include "unified_logger.h"
 
 #define FAPI_P7_TYPE_THRESHOLD 0x80
@@ -42,9 +41,7 @@ static void l2_to_aerial_forward(AppContext* ctx, uint16_t type_id,
                                  const void* payload, uint32_t len)
 {
     if (type_id >= FAPI_P7_TYPE_THRESHOLD) {
-        SM_Logs(LOG_DEBUG, _P7_,
-                "[AERIAL_OCUDU L2->Aerial] P7 msg type=0x%04x len=%u "
-                "(no translator yet); dropping.", type_id, len);
+        (void)aerial_p7_translate_and_send(ctx, type_id, payload, len);
         return;
     }
     (void)aerial_p5_translate_and_send(ctx, type_id, payload, len);

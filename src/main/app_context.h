@@ -120,6 +120,7 @@ typedef struct {
     int           cell_id;
     int           cell_numerology;
     int           cell_pci;
+    int           cell_dl_grid;
 
     /* L2->Aerial forwarder thread: drains the OCUDU-L2 xSM queue and (later)
      * translates + sends each message to Aerial over nvIPC. */

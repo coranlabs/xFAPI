@@ -235,6 +235,10 @@ if(AERIAL_OCUDU)
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/config_request.c
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/start_request.c
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/stop_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/aerial_l2_to_l1_p7.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P7/dl_tti_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P7/tx_data_request.c
+        src/translation/AERIAL_L1_OCUDU/L2_to_L1/P7/ul_tti_request.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/aerial_l1_to_l2_p5.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/param_response.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/config_response.c
