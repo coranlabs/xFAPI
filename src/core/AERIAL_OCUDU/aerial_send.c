@@ -27,6 +27,8 @@
 #include "nfapi_nr_interface_scf.h"
 #include "nfapi.h"
 #include "nr_fapi.h"
+#include "nr_fapi_p5.h"
+#include "nr_fapi_p7.h"
 
 // Aerial's cpu_msg pool buffer is 15000 B; a packed P5 message never exceeds it.
 #define AERIAL_P5_TX_BUF_SIZE 15000u

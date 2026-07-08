@@ -49,6 +49,9 @@
 #define OCUDU_FAPI_SRS_INDICATION     0x88
 #define OCUDU_FAPI_RACH_INDICATION    0x89
 
+// End-of-slot sentinel from OCUDU-L2; carries only a slot_point, no FAPI content.
+#define OCUDU_FAPI_P7_LAST_MESSAGE    0x8F
+
 // ---------------------------------------------------------------------------
 // fapi_xsm_msg_header (ocudu_india fapi_xsm_message_header.h). 40 bytes:
 //   off 0  : p_next             (ptr, transport-local — zeroed by us)

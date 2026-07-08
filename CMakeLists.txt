@@ -242,7 +242,13 @@ if(AERIAL_OCUDU)
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/aerial_l1_to_l2_p5.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/param_response.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P5/config_response.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/aerial_l1_to_l2_p7.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/slot_indication.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/rach_indication.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/crc_indication.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/rx_data_indication.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/uci_indication.c
+        src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/srs_indication.c
         # Pulled in because main.c unconditionally references them.
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c

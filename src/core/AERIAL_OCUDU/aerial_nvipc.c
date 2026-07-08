@@ -134,8 +134,16 @@ static void aerial_nvipc_handle_rx(aerial_nvipc_t* nv, const nv_ipc_msg_t* msg)
             break;
         }
         case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
-            (void)aerial_l1l2_slot_indication(ctx, (const uint8_t*)msg->msg_buf,
-                                              (uint32_t)msg->msg_len);
+        case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
+            (void)aerial_p7_translate_to_l2(ctx, msg->msg_id,
+                                            (const uint8_t*)msg->msg_buf,
+                                            (uint32_t)msg->msg_len,
+                                            (const uint8_t*)msg->data_buf,
+                                            (uint32_t)(msg->data_len > 0 ? msg->data_len : 0));
             break;
         case NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION: {
             const uint8_t* b = (const uint8_t*)msg->msg_buf + AERIAL_SCF_MSG_HDR_SIZE;

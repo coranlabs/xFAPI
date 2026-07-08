@@ -30,6 +30,11 @@ int aerial_p7_translate_and_send(struct AppContext* ctx,
         return -1;
     }
 
+    // Aerial has no end-of-slot marker
+    if (type_id == OCUDU_FAPI_P7_LAST_MESSAGE) {
+        return 0;
+    }
+
     uint8_t        msg_type = 0;
     const uint8_t* body     = NULL;
     uint32_t       body_len = 0;
