@@ -136,7 +136,7 @@ int aerial_l1l2_rx_data_indication(struct AppContext* ctx,
     } else {
         add_message_stats("RX_DATA_INDICATION", (int)sfn, (int)slot,
                           (int)w.off, (int)n_pdu, content, 0);
-        SM_Logs(LOG_INFO, _P7_,
+        SM_Logs(LOG_DEBUG, _P7_,
                 "[L1->L2 P7] RX_DATA.indication SFN %u.%u n_pdu=%u -> OCUDU-L2.",
                 sfn, slot, n_pdu);
         rc = aerial_l2_xsm_put(ctx, OCUDU_FAPI_RX_DATA_INDICATION, body, w.off);

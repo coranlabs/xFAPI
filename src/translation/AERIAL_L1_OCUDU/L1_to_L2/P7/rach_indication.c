@@ -113,7 +113,7 @@ int aerial_l1l2_rach_indication(struct AppContext* ctx,
     add_message_stats("RACH_INDICATION", (int)ind->sfn, (int)ind->slot,
                       (int)w.off, 1, content, 0);
 
-    SM_Logs(LOG_INFO, _P7_,
+    SM_Logs(LOG_DEBUG, _P7_,
             "[L1->L2 P7] RACH.indication SFN %u.%u n_pdu=%u -> OCUDU-L2.",
             ind->sfn, ind->slot, ind->number_of_pdus);
 
