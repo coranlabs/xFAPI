@@ -39,8 +39,22 @@ foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AE
     if(${mode})
         add_compile_definitions(${mode})
         message(STATUS "Enabled compile definition: ${mode}")
+        list(APPEND ENABLED_MODES ${mode})
     endif()
 endforeach()
+
+# The modes are mutually exclusive: each defines its own nfapi_codec target and
+# source set. cmake caches -D<MODE>=ON options, so a stale build directory can
+# carry two modes ON at once and double-define nfapi_codec. Fail early and
+# clearly instead. Wipe the build directory to switch modes.
+list(LENGTH ENABLED_MODES ENABLED_MODE_COUNT)
+if(ENABLED_MODE_COUNT GREATER 1)
+    message(FATAL_ERROR
+        "More than one build mode is enabled: ${ENABLED_MODES}. "
+        "The modes are mutually exclusive. This usually means a stale build "
+        "cache: delete the build directory and reconfigure with a single "
+        "-D<MODE>=ON.")
+endif()
 
 # ========================
 # Add source files
@@ -327,6 +341,8 @@ if(AERIAL_OAI)
         src/core/AERIAL_OAI/aerial_nvipc.c
         src/core/AERIAL_OAI/aerial_send.c
         src/core/AERIAL_OAI/oai_pnf.c
+        src/core/AERIAL_OAI/oai_p7.c
+        src/core/AERIAL_OAI/aerial_oai_bridge.c
         # Pulled in because main.c unconditionally references them.
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c

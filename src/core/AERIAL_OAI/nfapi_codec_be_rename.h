@@ -31,6 +31,7 @@
 #define nfapi_nr_p5_message_unpack        be_nfapi_nr_p5_message_unpack
 #define nfapi_nr_p5_message_header_unpack be_nfapi_nr_p5_message_header_unpack
 #define nfapi_nr_p7_message_pack          be_nfapi_nr_p7_message_pack
+#define nfapi_nr_p7_message_unpack        be_nfapi_nr_p7_message_unpack
 #define nfapi_nr_p7_message_header_unpack be_nfapi_nr_p7_message_header_unpack
 #define nfapi_nr_p7_update_checksum       be_nfapi_nr_p7_update_checksum
 

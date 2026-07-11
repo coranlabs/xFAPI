@@ -38,6 +38,7 @@
 #ifdef AERIAL_OAI
 #include <stdbool.h>
 #include <stdatomic.h>
+#include "itc_queue.h"
 #endif
 
 #ifdef OCUDU_OCUDU
@@ -156,6 +157,9 @@ typedef struct {
 
     /* nFAPI PNF runtime state (P5 SCTP + P7 UDP + handshake + threads). */
     struct oai_pnf* pnf;
+
+    /* Hands P7 RX items from the UDP listener thread to the rx_task thread. */
+    ITC_Queue_t p7_rx_queue;
 
     /* Cell state carried on / latched from the P5 exchange. */
     int cell_id;

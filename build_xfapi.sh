@@ -27,7 +27,7 @@ show_help() {
     echo ""
     echo "Build options (choose only one of --mode or --sim_mode):"
     echo "  --mode=<value>         Build for one of the L1+L2 integration modes:"
-    echo "                         oai_osc, flexran_osc, flexran_oai, aerial_osc, ocudu_ocudu, oai_ocudu, aerial_ocudu"
+    echo "                         oai_osc, flexran_osc, flexran_oai, aerial_osc, ocudu_ocudu, oai_ocudu, aerial_ocudu, aerial_oai"
     echo ""
     echo "  --sim_mode=<value>     Build for one of the simulation modes:"
     echo "                         L1_SIM_OAI_OSC"
@@ -85,6 +85,10 @@ for arg in "$@"; do
             ;;
         --mode=aerial_ocudu)
             MODE="-DAERIAL_OCUDU=ON"
+            ((MODE_COUNT++))
+            ;;
+        --mode=aerial_oai)
+            MODE="-DAERIAL_OAI=ON"
             ((MODE_COUNT++))
             ;;
         --sim_mode=L1_SIM_OAI_OSC)

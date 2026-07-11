@@ -46,6 +46,9 @@ int  be_nfapi_nr_p7_message_pack(void* pMessageBuf, void* pPackedBuf,
 bool be_nfapi_nr_p7_message_header_unpack(void* pMessageBuf, uint32_t messageBufLen,
                                           void* pUnpackedBuf, uint32_t unpackedBufLen,
                                           nfapi_p7_codec_config_t* config);
+bool be_nfapi_nr_p7_message_unpack(void* pMessageBuf, uint32_t messageBufLen,
+                                   void* pUnpackedBuf, uint32_t unpackedBufLen,
+                                   nfapi_p7_codec_config_t* config);
 int  be_nfapi_nr_p7_update_checksum(uint8_t* buffer, uint32_t len);
 
 #endif /* AERIAL_OAI */

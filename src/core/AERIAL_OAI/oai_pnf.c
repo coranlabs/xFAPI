@@ -13,11 +13,10 @@
 // limitations under the License.
 
 // AERIAL_OAI PNF: xFAPI as the nFAPI PNF (server) toward OAI-L2 (the MAC/VNF).
-// The socket role mirrors an nFAPI PNF: SCTP listen/accept for P5, UDP bind for
-// P7. The handshake is the inverse of OAI_OCUDU's VNF — here xFAPI RESPONDS to
-// PNF_PARAM/CONFIG/START.request with the matching .response and, once the VNF
-// reaches the cell handshake, relays it to Aerial (P7 wiring lands with the
-// data-plane bridge). The nFAPI wire is big-endian; encoded/decoded via be_*.
+// Socket role mirrors an nFAPI PNF (SCTP listen/accept P5, UDP bind P7). The
+// handshake is the inverse of OAI_OCUDU's VNF: xFAPI RESPONDS to PNF_PARAM/
+// CONFIG/START.request. Cell-level P5 requests and all P7 flow through the
+// re-frame bridge to/from Aerial. The nFAPI wire is big-endian (be_* codec).
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -39,49 +38,13 @@
 #include <sys/select.h>
 
 #include "../../main/app_context.h"
-#include "aerial_send.h"
+#include "aerial_oai_bridge.h"
 #include "nfapi_codec_be.h"
 #include "unified_logger.h"
 
 #include "nfapi_interface.h"
+#include "nfapi_nr_interface.h"
 #include "nfapi_nr_interface_scf.h"
-
-#define OAI_PNF_TX_BUF_SIZE   NFAPI_MAX_PACKED_MESSAGE_SIZE
-#define OAI_PNF_SCTP_BACKLOG  5
-#define OAI_PNF_SCTP_STREAMS  5
-
-typedef enum {
-    OAI_PNF_DISCONNECTED = 0,
-    OAI_PNF_CONNECTED,        // SCTP accepted, P5 up
-    OAI_PNF_CONFIGURED,       // PNF_CONFIG.response sent
-    OAI_PNF_RUNNING           // PNF_START.request seen; P7 active
-} oai_pnf_state_t;
-
-typedef struct oai_pnf {
-    struct AppContext* ctx;
-
-    // ---- P5 (SCTP) ----
-    int                 listener_fd;
-    int                 p5_sock;       // accepted VNF connection (-1 if none)
-    struct sockaddr_in  vnf_p5_addr;   // peer (VNF/MAC) P5 address
-    oai_pnf_state_t     state;
-    pthread_t           p5_listener_tid;
-    int                 p5_listener_started;
-
-    // ---- P7 (UDP) ----
-    int                 p7_sock;
-    struct sockaddr_in  vnf_p7_addr;   // VNF P7 dest
-    int                 p7_addr_known;
-
-    // ---- codec configs ----
-    nfapi_p4_p5_codec_config_t p5_codec;
-    nfapi_p7_codec_config_t    p7_codec;
-
-    uint8_t             p5_tx_buf[OAI_PNF_TX_BUF_SIZE];
-
-    atomic_int          running;
-    int                 checksum_enabled;
-} oai_pnf_t;
 
 static int  oai_pnf_open_p5_listener(oai_pnf_t* p);
 static int  oai_pnf_open_p7_socket(oai_pnf_t* p);
@@ -90,8 +53,9 @@ static void* oai_pnf_p5_listener_thread(void* arg);
 static int  oai_pnf_accept_vnf(oai_pnf_t* p);
 static int  oai_pnf_p5_read_dispatch(oai_pnf_t* p);
 static void oai_pnf_handle_p5_message(oai_pnf_t* p, uint8_t* buf, uint32_t len);
-static int  oai_pnf_send_p5(oai_pnf_t* p, nfapi_nr_p4_p5_message_header_t* hdr,
-                            uint32_t msg_len);
+static int  oai_pnf_send_p5_raw(oai_pnf_t* p, nfapi_nr_p4_p5_message_header_t* hdr,
+                                uint32_t msg_len);
+static void oai_pnf_enter_running(oai_pnf_t* p);
 
 // ===========================================================================
 // Lifecycle
@@ -111,12 +75,16 @@ int oai_pnf_start(struct AppContext* ctx)
     p->listener_fd = -1;
     p->p5_sock     = -1;
     p->p7_sock     = -1;
+    p->p7_sequence = 0;
     p->state       = OAI_PNF_DISCONNECTED;
     p->checksum_enabled = ctx->config.nfapi_socket.checksum_enabled ? 1 : 0;
     atomic_store(&p->running, 1);
 
     memset(&p->p5_codec, 0, sizeof(p->p5_codec));
     memset(&p->p7_codec, 0, sizeof(p->p7_codec));
+
+    oai_pnf_rx_pool_init(&p->rx_pool);
+    oai_pnf_seg_queue_init(&p->seg_queue);
 
     if (oai_pnf_open_p7_socket(p) != 0) {
         free(p);
@@ -169,6 +137,8 @@ void oai_pnf_stop(struct AppContext* ctx)
     oai_pnf_close_vnf_session(p);
     if (p->listener_fd >= 0) { close(p->listener_fd); p->listener_fd = -1; }
     if (p->p7_sock >= 0)     { close(p->p7_sock);     p->p7_sock = -1; }
+
+    oai_pnf_seg_queue_destroy(&p->seg_queue);
 
     ctx->aerial_oai_ctx.pnf = NULL;
     free(p);
@@ -270,7 +240,7 @@ static int oai_pnf_open_p7_socket(oai_pnf_t* p)
 }
 
 // ===========================================================================
-// P5 listener thread: accept VNF, respond to handshake, survive disconnects
+// P5 listener thread
 // ===========================================================================
 
 static void* oai_pnf_p5_listener_thread(void* arg)
@@ -339,6 +309,12 @@ static int oai_pnf_accept_vnf(oai_pnf_t* p)
     p->p5_sock     = s;
     p->vnf_p5_addr = peer;
     p->state       = OAI_PNF_CONNECTED;
+    // The VNF connects P7 from the same host; default the P7 dest to the peer
+    // address (the P5 port is replaced by the configured P7 remote port).
+    if (!p->p7_addr_known) {
+        p->vnf_p7_addr.sin_addr = peer.sin_addr;
+        p->p7_addr_known = 1;
+    }
     SM_Logs(LOG_INFO, _P5_, "[OAI_PNF] VNF connected from %s:%d.",
             inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
     return 0;
@@ -346,10 +322,15 @@ static int oai_pnf_accept_vnf(oai_pnf_t* p)
 
 static void oai_pnf_close_vnf_session(oai_pnf_t* p)
 {
+    if (p->p7_threads_started) {
+        oai_pnf_p7_threads_stop(p);
+        p->p7_threads_started = 0;
+    }
     if (p->p5_sock >= 0) {
         close(p->p5_sock);
         p->p5_sock = -1;
     }
+    oai_pnf_seg_queue_reset(&p->seg_queue);
     p->state        = OAI_PNF_DISCONNECTED;
     p->p7_addr_known = 0;
 }
@@ -425,8 +406,8 @@ static int oai_pnf_p5_read_dispatch(oai_pnf_t* p)
 // P5 send (pack + sctp_sendmsg)
 // ===========================================================================
 
-static int oai_pnf_send_p5(oai_pnf_t* p, nfapi_nr_p4_p5_message_header_t* hdr,
-                           uint32_t msg_len)
+static int oai_pnf_send_p5_raw(oai_pnf_t* p, nfapi_nr_p4_p5_message_header_t* hdr,
+                               uint32_t msg_len)
 {
     if (p->p5_sock < 0) {
         SM_Logs(LOG_ERROR, _P5_, "[OAI_PNF] P5 send with no VNF connected.");
@@ -455,6 +436,15 @@ static int oai_pnf_send_p5(oai_pnf_t* p, nfapi_nr_p4_p5_message_header_t* hdr,
     return 0;
 }
 
+int oai_pnf_send_p5(struct AppContext* ctx,
+                    nfapi_nr_p4_p5_message_header_t* hdr, uint32_t msg_len)
+{
+    if (ctx == NULL || ctx->aerial_oai_ctx.pnf == NULL || hdr == NULL) {
+        return -1;
+    }
+    return oai_pnf_send_p5_raw(ctx->aerial_oai_ctx.pnf, hdr, msg_len);
+}
+
 // ===========================================================================
 // Handshake responder
 // ===========================================================================
@@ -466,12 +456,11 @@ static int oai_pnf_send_pnf_param_response(oai_pnf_t* p)
     resp.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PNF_PARAM_RESPONSE;
     resp.header.phy_id     = 0;
     resp.error_code        = NFAPI_MSG_OK;
-    // Advertise a single PHY so the VNF's PNF_CONFIG.request can target it.
     resp.num_tlvs          = 1;
     resp.pnf_phy.tl.tag    = NFAPI_PNF_PHY_TAG;
     resp.pnf_phy.number_of_phys = 1;
     resp.pnf_phy.phy[0].phy_config_index = 0;
-    return oai_pnf_send_p5(p, &resp.header, sizeof(resp));
+    return oai_pnf_send_p5_raw(p, &resp.header, sizeof(resp));
 }
 
 static int oai_pnf_send_pnf_config_response(oai_pnf_t* p)
@@ -481,7 +470,23 @@ static int oai_pnf_send_pnf_config_response(oai_pnf_t* p)
     resp.header.message_id = NFAPI_NR_PHY_MSG_TYPE_PNF_CONFIG_RESPONSE;
     resp.header.phy_id     = 0;
     resp.error_code        = NFAPI_MSG_OK;
-    return oai_pnf_send_p5(p, &resp.header, sizeof(resp));
+    return oai_pnf_send_p5_raw(p, &resp.header, sizeof(resp));
+}
+
+static void oai_pnf_enter_running(oai_pnf_t* p)
+{
+    if (p->state == OAI_PNF_RUNNING) {
+        return;
+    }
+    if (!p->p7_threads_started) {
+        if (oai_pnf_p7_threads_start(p) != 0) {
+            SM_Logs(LOG_ERROR, _P7_, "[OAI_PNF] P7 threads start failed.");
+            return;
+        }
+        p->p7_threads_started = 1;
+    }
+    p->state = OAI_PNF_RUNNING;
+    SM_Logs(LOG_INFO, _P5_, "[OAI_PNF] PNF RUNNING; P7 data plane active.");
 }
 
 static void oai_pnf_handle_p5_message(oai_pnf_t* p, uint8_t* buf, uint32_t len)
@@ -512,15 +517,23 @@ static void oai_pnf_handle_p5_message(oai_pnf_t* p, uint8_t* buf, uint32_t len)
             break;
 
         case NFAPI_NR_PHY_MSG_TYPE_PNF_START_REQUEST:
-            // OAI's VNF goes RUNNING after sending PNF_START.request and does
-            // not require a PNF_START.response; entering RUNNING here is enough.
             SM_Logs(LOG_INFO, _P5_,
                     "[OAI_PNF] <- PNF_START.request; PNF entering RUNNING.");
-            p->state = OAI_PNF_RUNNING;
+            oai_pnf_enter_running(p);
             break;
 
-        // Cell-level P5 (PARAM/CONFIG/START.request) and their responses are
-        // handled by the data-plane bridge; ignore until that lands.
+        // Cell-level P5 requests: relay to Aerial (the responses come back over
+        // nvIPC and are relayed to the VNF by the bridge).
+        case NFAPI_NR_PHY_MSG_TYPE_PARAM_REQUEST:
+        case NFAPI_NR_PHY_MSG_TYPE_CONFIG_REQUEST:
+        case NFAPI_NR_PHY_MSG_TYPE_START_REQUEST:
+        case NFAPI_NR_PHY_MSG_TYPE_STOP_REQUEST:
+            SM_Logs(LOG_INFO, _P5_,
+                    "[OAI_PNF] <- cell P5 msg_id=0x%02x -> Aerial.",
+                    header.message_id);
+            (void)aerial_oai_bridge_p5_to_aerial(p->ctx, buf, len);
+            break;
+
         default:
             SM_Logs(LOG_WARN, _P5_,
                     "[OAI_PNF] <- Unhandled P5 msg_id=0x%04x (len=%u).",
@@ -530,19 +543,52 @@ static void oai_pnf_handle_p5_message(oai_pnf_t* p, uint8_t* buf, uint32_t len)
 }
 
 // ===========================================================================
-// Aerial -> OAI bridge (data plane lands with the re-frame step)
+// Aerial -> OAI entry point (called by the nvIPC RX thread)
 // ===========================================================================
 
 int aerial_oai_from_aerial(struct AppContext* ctx, int32_t msg_id,
                            const uint8_t* scf_msg, uint32_t scf_len,
                            const uint8_t* data_buf, uint32_t data_len)
 {
-    (void)ctx; (void)scf_msg; (void)scf_len; (void)data_buf; (void)data_len;
-    SM_Logs(LOG_DEBUG, _P7_,
-            "[AERIAL_OAI Aerial->OAI] rx msg_id=0x%02x scf_len=%u data_len=%u "
-            "(bridge pending).",
-            msg_id, scf_len, data_len);
-    return 0;
+    if (ctx == NULL || scf_msg == NULL) {
+        return -1;
+    }
+    switch (msg_id) {
+        case NFAPI_NR_PHY_MSG_TYPE_PARAM_RESPONSE:
+        case NFAPI_NR_PHY_MSG_TYPE_CONFIG_RESPONSE:
+        case NFAPI_NR_PHY_MSG_TYPE_START_RESPONSE:
+        case NFAPI_NR_PHY_MSG_TYPE_STOP_INDICATION:
+            return aerial_oai_bridge_p5_to_oai(ctx, msg_id, scf_msg, scf_len);
+
+        case NFAPI_NR_PHY_MSG_TYPE_SLOT_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_RX_DATA_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_CRC_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_UCI_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_SRS_INDICATION:
+        case NFAPI_NR_PHY_MSG_TYPE_RACH_INDICATION:
+            return aerial_oai_bridge_p7_to_oai(ctx, msg_id, scf_msg, scf_len,
+                                               data_buf, data_len);
+
+        case NFAPI_NR_PHY_MSG_TYPE_ERROR_INDICATION: {
+            const uint8_t* b = scf_msg + 8u;
+            if (scf_len >= 8u + 6u) {
+                uint16_t sfn, slot;
+                memcpy(&sfn, b, 2);
+                memcpy(&slot, b + 2, 2);
+                SM_Logs(LOG_ERROR, _P7_,
+                        "[AERIAL_OAI Aerial->OAI] Aerial ERROR.indication SFN %u.%u "
+                        "msg_id=0x%02x err_code=0x%02x.",
+                        sfn, slot, b[4], b[5]);
+            }
+            return 0;
+        }
+
+        default:
+            SM_Logs(LOG_DEBUG, _P7_,
+                    "[AERIAL_OAI Aerial->OAI] rx msg_id=0x%02x scf_len=%u "
+                    "(no route).", msg_id, scf_len);
+            return 0;
+    }
 }
 
 #endif /* AERIAL_OAI */
