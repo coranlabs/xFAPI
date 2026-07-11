@@ -26,8 +26,16 @@
 #ifdef AERIAL_OCUDU
 #include "../framework/aerial_l1_interface.h"
 #endif
+#ifdef AERIAL_OAI
+#include "../framework/aerial_oai_l1_interface.h"
+#include "../framework/oai_l2_interface.h"
+#endif
 #if defined(OCUDU_OCUDU) || defined(OAI_OCUDU) || defined(AERIAL_OCUDU)
 #include "xsm/xsm.h"
+#include <stdbool.h>
+#include <stdatomic.h>
+#endif
+#ifdef AERIAL_OAI
 #include <stdbool.h>
 #include <stdatomic.h>
 #endif
@@ -134,6 +142,28 @@ typedef struct {
 } AERIALOCUDUContext;
 #endif
 
+#ifdef AERIAL_OAI
+
+/* nvIPC secondary client (toward Aerial L1) and nFAPI PNF server (toward OAI
+ * L2). Both are opaque, forward-declared so app_context.h stays light. The
+ * bridge re-frames SCF <-> nFAPI in the two RX threads, no OCUDU IR. */
+struct aerial_nvipc;
+struct oai_pnf;
+
+typedef struct {
+    /* nvIPC secondary runtime state (attach + Aerial->OAI RX loop + TX). */
+    struct aerial_nvipc* nvipc;
+
+    /* nFAPI PNF runtime state (P5 SCTP + P7 UDP + handshake + threads). */
+    struct oai_pnf* pnf;
+
+    /* Cell state carried on / latched from the P5 exchange. */
+    int cell_id;
+    int cell_numerology;
+    int cell_pci;
+} AERIALOAIContext;
+#endif
+
 typedef struct AppContext {
     xFAPI_Config config;
     xFAPI_ConfigFlags config_flags;
@@ -155,6 +185,12 @@ typedef struct AppContext {
     AERIALOCUDUContext        aerial_ocudu_ctx;
     const AERIAL_L1_Interface* aerial_l1_ctx;
     const OCUDU_L2_Interface* ocudu_l2_ctx;   /* L2 is still OCUDU; reuse vtable */
+#endif
+
+#ifdef AERIAL_OAI
+    AERIALOAIContext              aerial_oai_ctx;
+    const AERIAL_OAI_L1_Interface* aerial_l1_ctx;
+    const OAI_L2_Interface*        oai_l2_ctx;
 #endif
 
     int is_running;

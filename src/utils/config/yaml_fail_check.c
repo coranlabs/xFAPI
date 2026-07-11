@@ -182,6 +182,47 @@ void print_config_table(const xFAPI_Config *config) {
 
 #endif
 
+#ifdef AERIAL_OAI
+
+void validate_and_fill_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
+    (void)flags;
+
+    if (config->nvipc.prefix[0] == '\0') {
+        report_missing_critical_param("nvipc.prefix");
+    }
+    if (config->nfapi_socket.p5_local_port == 0) {
+        report_missing_critical_param("nfapi_socket.p5_local_port");
+    }
+    if (config->nfapi_socket.p7_local_port == 0) {
+        report_missing_critical_param("nfapi_socket.p7_local_port");
+    }
+    if (config->forwarder.sched_policy[0] == '\0') {
+        strncpy(config->forwarder.sched_policy, "SCHED_OTHER",
+                sizeof(config->forwarder.sched_policy) - 1);
+    }
+    if (config->forwarder.priority < 0) {
+        config->forwarder.priority = 0;
+    }
+}
+
+void print_config_table(const xFAPI_Config *config) {
+    SM_Logs(LOG_INFO, _XFAPI_, "======= AERIAL_OAI configuration =======");
+    SM_Logs(LOG_INFO, _XFAPI_, "nvIPC prefix:           %s", config->nvipc.prefix);
+    SM_Logs(LOG_INFO, _XFAPI_, "nvIPC rx mode:          %s",
+            config->nvipc.blocking ? "blocking (sem)" : "epoll (fd)");
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P5 listen port:   %d",
+            config->nfapi_socket.p5_local_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P7 bind port:     %d",
+            config->nfapi_socket.p7_local_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "OAI L2 remote ip/p7:    %s / %d",
+            config->nfapi_socket.remote_ip, config->nfapi_socket.p7_remote_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "Fwd recv/send core:     %d / %d",
+            config->forwarder.recv_core_id, config->forwarder.send_core_id);
+    SM_Logs(LOG_INFO, _XFAPI_, "========================================");
+}
+
+#endif
+
 void validate_and_fill_sim_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
 
     if (!flags->simulation_mode.core_config.rx_task.core_id){

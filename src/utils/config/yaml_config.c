@@ -704,6 +704,147 @@ void parse_aerial_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
 }
 #endif /* AERIAL_OCUDU */
 
+#ifdef AERIAL_OAI
+
+void parse_aerial_oai_nvipc_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                   xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0, depth = 0, expecting_key = 1;
+    char current_key[64] = "";
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in nvipc\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT: depth++; expecting_key = 1; break;
+            case YAML_MAPPING_END_EVENT:   depth--; if (depth == 0) done = 1; break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "prefix") == 0) {
+                        strncpy(config->nvipc.prefix, val, sizeof(config->nvipc.prefix) - 1);
+                        config->nvipc.prefix[sizeof(config->nvipc.prefix) - 1] = '\0';
+                    } else if (strcmp(current_key, "blocking") == 0) {
+                        config->nvipc.blocking = parse_yaml_bool(val);
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_aerial_oai_nvipc_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default: break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+
+void parse_aerial_oai_nfapi_socket_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                          xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0, depth = 0, expecting_key = 1;
+    char current_key[64] = "";
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in nfapi_socket\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT: depth++; expecting_key = 1; break;
+            case YAML_MAPPING_END_EVENT:   depth--; if (depth == 0) done = 1; break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "remote_ip") == 0) {
+                        strncpy(config->nfapi_socket.remote_ip, val,
+                                sizeof(config->nfapi_socket.remote_ip) - 1);
+                        config->nfapi_socket.remote_ip[sizeof(config->nfapi_socket.remote_ip) - 1] = '\0';
+                    } else if (strcmp(current_key, "local_ip") == 0) {
+                        strncpy(config->nfapi_socket.local_ip, val,
+                                sizeof(config->nfapi_socket.local_ip) - 1);
+                        config->nfapi_socket.local_ip[sizeof(config->nfapi_socket.local_ip) - 1] = '\0';
+                    } else if (strcmp(current_key, "p5_local_port") == 0) {
+                        config->nfapi_socket.p5_local_port = atoi(val);
+                    } else if (strcmp(current_key, "p7_local_port") == 0) {
+                        config->nfapi_socket.p7_local_port = atoi(val);
+                    } else if (strcmp(current_key, "p7_remote_port") == 0) {
+                        config->nfapi_socket.p7_remote_port = atoi(val);
+                    } else if (strcmp(current_key, "enable_checksum") == 0) {
+                        config->nfapi_socket.checksum_enabled = parse_yaml_bool(val);
+                    } else if (strcmp(current_key, "ipv6_enabled") == 0) {
+                        config->nfapi_socket.ipv6_enabled = parse_yaml_bool(val);
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_aerial_oai_nfapi_socket_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default: break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+
+void parse_aerial_oai_forwarder_config(yaml_parser_t *parser, xFAPI_Config *config,
+                                       xFAPI_ConfigFlags *config_flags) {
+    (void)config_flags;
+    yaml_event_t event;
+    int done = 0, depth = 0, expecting_key = 1;
+    char current_key[64] = "";
+
+    while (!done) {
+        if (!yaml_parser_parse(parser, &event)) {
+            fprintf(stderr, "Parser error %d in forwarder\n", parser->error);
+            break;
+        }
+        switch (event.type) {
+            case YAML_MAPPING_START_EVENT: depth++; expecting_key = 1; break;
+            case YAML_MAPPING_END_EVENT:   depth--; if (depth == 0) done = 1; break;
+            case YAML_SCALAR_EVENT:
+                if (depth == 1 && expecting_key) {
+                    strncpy(current_key, (char *)event.data.scalar.value, sizeof(current_key) - 1);
+                    current_key[sizeof(current_key) - 1] = '\0';
+                    expecting_key = 0;
+                } else if (depth == 1 && !expecting_key) {
+                    const char *val = (char *)event.data.scalar.value;
+                    if (strcmp(current_key, "recv_core_id") == 0) {
+                        config->forwarder.recv_core_id = atoi(val);
+                    } else if (strcmp(current_key, "send_core_id") == 0) {
+                        config->forwarder.send_core_id = atoi(val);
+                    } else if (strcmp(current_key, "priority") == 0) {
+                        config->forwarder.priority = atoi(val);
+                    } else if (strcmp(current_key, "sched_policy") == 0) {
+                        strncpy(config->forwarder.sched_policy, val,
+                                sizeof(config->forwarder.sched_policy) - 1);
+                        config->forwarder.sched_policy[sizeof(config->forwarder.sched_policy) - 1] = '\0';
+                    } else {
+                        SM_Logs(LOG_WARN, _XFAPI_,
+                                "parse_aerial_oai_forwarder_config: Unknown key '%s'", current_key);
+                    }
+                    expecting_key = 1;
+                }
+                break;
+            default: break;
+        }
+        yaml_event_delete(&event);
+    }
+}
+#endif /* AERIAL_OAI */
+
 void parse_simulation_mode_config(yaml_parser_t *parser, xFAPI_Config *config, xFAPI_ConfigFlags *config_flags) {
     yaml_event_t event;
     int done = 0;
@@ -1166,6 +1307,18 @@ int parse_yaml_main(const char *filename, AppContext *app_ctx) {
                         expecting_key = 1;
                     } else if (strcmp(current_top_key, "aerial_forwarder") == 0) {
                         parse_aerial_forwarder_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    }
+#endif
+#ifdef AERIAL_OAI
+                    else if (strcmp(current_top_key, "nvipc") == 0) {
+                        parse_aerial_oai_nvipc_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "nfapi_socket") == 0) {
+                        parse_aerial_oai_nfapi_socket_config(&parser, config, config_flags);
+                        expecting_key = 1;
+                    } else if (strcmp(current_top_key, "forwarder") == 0) {
+                        parse_aerial_oai_forwarder_config(&parser, config, config_flags);
                         expecting_key = 1;
                     }
 #endif

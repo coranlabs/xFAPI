@@ -1,0 +1,25 @@
+{
+  global:
+    fapi_nr_*;
+    free_*;
+    push8;
+    push16;
+    push32;
+    pushs8;
+    pushs16;
+    pushs32;
+    pusharray8;
+    pusharray16;
+    pusharray32;
+    pull8;
+    pull16;
+    pull32;
+    pulls8;
+    pulls16;
+    pulls32;
+    pullarray8;
+    pullarray16;
+    pullarray32;
+  local:
+    *;
+};

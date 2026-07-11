@@ -1,0 +1,41 @@
+app_name: "xfapi_main"
+
+# AERIAL_OAI: Aerial L1 (SCF FAPI over nvIPC) <-> OAI L2 (classic nFAPI).
+# xFAPI is the nvIPC SECONDARY toward Aerial and the nFAPI PNF (server) toward
+# OAI-L2 (OAI-MAC connects in as the VNF). No DPDK, no xSM in this mode.
+
+logging:
+  vertical_level: "INFO"
+  horizontal_level:
+    xFAPI_log: true
+    xSM_log: false
+    P5_log: true
+    P7_log: true
+  print_config: false
+  print_datetime: true
+
+log_file:
+  generate_log_file: false
+
+# nvIPC toward Aerial cuphycontroller (PRIMARY). Prefix must match Aerial's
+# nvipc shm_config.prefix.
+nvipc:
+  prefix: "nvipc"
+  blocking: false
+
+# nFAPI sockets toward OAI-L2 (MAC). xFAPI (PNF) SCTP-listens on p5_local_port
+# and UDP-binds p7_local_port; OAI-MAC (VNF) connects in. remote_ip/p7_remote_
+# port are the OAI-L2 P7 destination until the VNF advertises its own.
+nfapi_socket:
+  remote_ip: "127.0.0.1"
+  local_ip: "127.0.0.1"
+  p5_local_port: 50001
+  p7_local_port: 50011
+  p7_remote_port: 50010
+  enable_checksum: true
+
+forwarder:
+  recv_core_id: 17
+  send_core_id: 18
+  priority: 85
+  sched_policy: "SCHED_FIFO"

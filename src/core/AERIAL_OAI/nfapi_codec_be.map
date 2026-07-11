@@ -1,0 +1,7 @@
+{
+  global:
+    be_nfapi_nr_*;
+    free_*;
+  local:
+    *;
+};

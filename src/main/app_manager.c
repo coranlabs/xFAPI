@@ -27,6 +27,10 @@
 #include "../core/AERIAL_OCUDU/forwarder_l2_to_aerial.h"
 #include "../framework/dpdk/dpdk_init.h"
 #endif
+#ifdef AERIAL_OAI
+#include "../framework/aerial_oai_l1_interface.h"
+#include "../framework/oai_l2_interface.h"
+#endif
 
 static void app_select_interfaces(AppContext* ctx) {
 #ifdef OCUDU_OCUDU
@@ -43,6 +47,11 @@ static void app_select_interfaces(AppContext* ctx) {
     SM_Logs(LOG_INFO, _XFAPI_, "Selecting Aerial L1 (nvIPC) + OCUDU L2 (xSM) interfaces.");
     ctx->aerial_l1_ctx = get_aerial_l1_interface();
     ctx->ocudu_l2_ctx  = get_ocudu_l2_interface();
+    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
+#elif defined(AERIAL_OAI)
+    SM_Logs(LOG_INFO, _XFAPI_, "Selecting Aerial L1 (nvIPC) + OAI L2 (nFAPI) interfaces.");
+    ctx->aerial_l1_ctx = get_aerial_oai_l1_interface();
+    ctx->oai_l2_ctx    = get_oai_l2_interface();
     SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No valid mode defined!");
@@ -137,6 +146,26 @@ int app_init(AppContext* ctx) {
         return -1;
     }
     return 0;
+#elif defined(AERIAL_OAI)
+
+    if (!ctx->aerial_l1_ctx || !ctx->oai_l2_ctx) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "Aerial L1 / OAI L2 interfaces not selected.");
+        return -1;
+    }
+    /* L1 init starts the nvIPC secondary (attaches to Aerial in the background
+     * and runs the Aerial->OAI RX loop). No DPDK/xSM in this mode. */
+    if (ctx->aerial_l1_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "Aerial L1 endpoint init failed.");
+        return -1;
+    }
+    /* L2 init opens the nFAPI PNF (SCTP P5 + UDP P7), the handshake responder,
+     * and the OAI->Aerial forwarder. */
+    if (ctx->oai_l2_ctx->init(ctx) != 0) {
+        SM_Logs(LOG_CRTERR, _XFAPI_, "OAI L2 endpoint init failed.");
+        ctx->aerial_l1_ctx->destroy(ctx);
+        return -1;
+    }
+    return 0;
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No build mode defined.");
     return -1;
@@ -177,6 +206,14 @@ void app_destroy(AppContext* ctx) {
         ctx->ocudu_l2_ctx->destroy(ctx);
     }
     /* aerial_l1_ctx->destroy stops the nvIPC client and closes L2 xSM. */
+    if (ctx->aerial_l1_ctx && ctx->aerial_l1_ctx->destroy) {
+        ctx->aerial_l1_ctx->destroy(ctx);
+    }
+#elif defined(AERIAL_OAI)
+    /* Stop L2 (OAI PNF: P5/P7 threads + sockets) then L1 (nvIPC client). */
+    if (ctx->oai_l2_ctx && ctx->oai_l2_ctx->destroy) {
+        ctx->oai_l2_ctx->destroy(ctx);
+    }
     if (ctx->aerial_l1_ctx && ctx->aerial_l1_ctx->destroy) {
         ctx->aerial_l1_ctx->destroy(ctx);
     }

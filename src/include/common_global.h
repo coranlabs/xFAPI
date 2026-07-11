@@ -174,6 +174,39 @@ typedef struct {
 } aerial_forwarder_config_t;
 #endif
 
+#ifdef AERIAL_OAI
+
+/* nvIPC client configuration (toward Aerial L1). xFAPI is the nvIPC SECONDARY;
+ * Aerial cuphycontroller is the PRIMARY that owns the SHM pools. The secondary
+ * only needs the SHM transport prefix. */
+typedef struct {
+    char prefix[32];         /* SHM prefix; must match Aerial's nvipc prefix  */
+    bool blocking;           /* 1 = rx_tti_sem_wait loop, 0 = epoll on get_fd */
+} aerial_oai_nvipc_config_t;
+
+/* nFAPI socket endpoints toward OAI L2 (MAC). xFAPI is the nFAPI PNF (server):
+ * it SCTP-listens on p5_local_port and UDP-binds p7_local_port; OAI-MAC (VNF)
+ * connects in and its advertised P7 address/port become the send target. */
+typedef struct {
+    bool ipv6_enabled;
+    char remote_ip[64];      /* OAI L2 (VNF) address                          */
+    char local_ip[64];       /* this xFAPI (PNF) address                      */
+    int  p5_local_port;      /* xFAPI SCTP-listens here                       */
+    int  p7_local_port;      /* xFAPI UDP-binds here                          */
+    int  p7_remote_port;     /* default OAI L2 P7 port until VNF advertises   */
+    bool checksum_enabled;
+} aerial_oai_nfapi_socket_t;
+
+/* Forwarder/thread core pinning for the AERIAL_OAI bridge. recv = Aerial->OAI
+ * (nvIPC rx thread), send = OAI->Aerial (nFAPI socket rx thread). */
+typedef struct {
+    int  recv_core_id;
+    int  send_core_id;
+    int  priority;
+    char sched_policy[20];
+} aerial_oai_forwarder_config_t;
+#endif
+
 typedef struct {
     int mode;
     core_config_sim_mode_t core_config;
@@ -244,6 +277,11 @@ typedef struct {
     ocudu_xsm_endpoint_config_t   ocudu_xsm_l2;
     nvipc_config_t                nvipc;
     aerial_forwarder_config_t     aerial_forwarder;
+#endif
+#ifdef AERIAL_OAI
+    aerial_oai_nvipc_config_t     nvipc;
+    aerial_oai_nfapi_socket_t     nfapi_socket;
+    aerial_oai_forwarder_config_t forwarder;
 #endif
 } xFAPI_Config;
 

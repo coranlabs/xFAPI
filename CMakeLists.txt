@@ -22,6 +22,7 @@ option(AERIAL_OSC "Use Aerial as L1 and OSC as L2" OFF)
 option(OCUDU_OCUDU "Use OCUDU as L1 and OCUDU as L2 (xSM-bridged)" OFF)
 option(OAI_OCUDU "Use OAI as L1 (nFAPI/UDP) and OCUDU as L2 (xSM-bridged)" OFF)
 option(AERIAL_OCUDU "Use Aerial as L1 (SCF FAPI/nvIPC) and OCUDU as L2 (xSM-bridged)" OFF)
+option(AERIAL_OAI "Use Aerial as L1 (SCF FAPI/nvIPC) and OAI as L2 (nFAPI SCTP+UDP)" OFF)
 option(L1_SIM_OAI_OSC "Simulated L1: OAI, L2: OSC" OFF)
 option(L1_SIM_OAI_OAI "Simulated L1: OAI, L2: OAI" OFF)
 option(L1_SIM_FRAN_OSC "Simulated L1: FlexRAN, L2: OSC" OFF)
@@ -32,7 +33,7 @@ option(L2_SIM_OSC_OAI "Simulated L2: OSC, L1: OAI" OFF)
 option(L2_SIM_OSC_FRAN "Simulated L2: OSC, L1: FlexRAN" OFF)
 
 # Define L1+L2 combinations
-foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AERIAL_OCUDU
+foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AERIAL_OCUDU AERIAL_OAI
               L1_SIM_OAI_OSC L1_SIM_OAI_OAI L1_SIM_FRAN_OSC L1_SIM_FRAN_OAI
               L2_SIM_OAI_OAI L2_SIM_OAI_FRAN L2_SIM_OSC_OAI L2_SIM_OSC_FRAN)
     if(${mode})
@@ -305,6 +306,100 @@ if(AERIAL_OCUDU)
 endif()
 
 
+# Aerial L1 (SCF FAPI over nvIPC) + OAI L2 (classic nFAPI over SCTP P5 + UDP P7).
+# xFAPI is the nvIPC SECONDARY toward Aerial (as in AERIAL_OCUDU) and the nFAPI
+# PNF (server) toward OAI-L2 (OAI-MAC connects in as the VNF). No xSM, no DPDK.
+#
+# Aerial speaks little-endian SCF and OAI speaks big-endian nFAPI, but both use
+# the same open-nFAPI codec whose endianness is a compile-time switch. So the
+# codec is built TWICE: nfapi_codec (little-endian, Aerial) and nfapi_codec_be
+# (big-endian, OAI). Both compile common/src/nfapi.c whose push16/pull16 carry
+# the endianness, and both export the same fapi_nr_* names, so each library is
+# isolated two ways: a version script keeps its internals (push16 etc.) local,
+# and the big-endian library renames its public entry points to be_* via a
+# force-included header so the OAI glue can call them alongside the Aerial ones.
+if(AERIAL_OAI)
+    message(STATUS "Adding sources for AERIAL_OAI mode")
+
+    list(APPEND SOURCES
+        src/framework/aerial_oai_l1_interface.c
+        src/framework/oai_l2_interface.c
+        src/core/AERIAL_OAI/aerial_nvipc.c
+        src/core/AERIAL_OAI/aerial_send.c
+        src/core/AERIAL_OAI/oai_pnf.c
+        # Pulled in because main.c unconditionally references them.
+        src/utils/config/yaml_fail_check.c
+        src/utils/stats_generation/message_stats.c
+    )
+
+    set(NFAPI_DIR     "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
+    set(NFAPI_UP      "${NFAPI_DIR}/open-nFAPI")
+    set(NFAPI_OAICOM  "${NFAPI_DIR}/oai_common")
+
+    set(NFAPI_LE_SOURCES
+        ${NFAPI_UP}/common/src/nfapi.c
+        ${NFAPI_UP}/common/src/debug.c
+        ${NFAPI_UP}/fapi/src/nr_fapi.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7_utils.c
+        ${NFAPI_OAICOM}/minimal_stub.c
+    )
+    set(NFAPI_BE_SOURCES
+        ${NFAPI_UP}/nfapi/src/nfapi_p4.c
+        ${NFAPI_UP}/nfapi/src/nfapi_p5.c
+        ${NFAPI_UP}/nfapi/src/nfapi_p7.c
+        ${NFAPI_UP}/common/src/nfapi.c
+        ${NFAPI_UP}/common/src/debug.c
+        ${NFAPI_UP}/fapi/src/nr_fapi.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p7_utils.c
+        ${NFAPI_OAICOM}/minimal_stub.c
+    )
+
+    set(NFAPI_CODEC_INCLUDES
+        ${NFAPI_DIR}
+        ${NFAPI_UP}/nfapi/public_inc
+        ${NFAPI_UP}/common/public_inc
+        ${NFAPI_UP}/fapi/inc
+        ${NFAPI_OAICOM}
+        ${NFAPI_OAICOM}/common/utils
+    )
+
+    # Little-endian codec for the Aerial/SCF side (as in AERIAL_OCUDU). The
+    # version script exports only the public API and keeps push16/pull16 local.
+    add_library(nfapi_codec SHARED ${NFAPI_LE_SOURCES})
+    target_include_directories(nfapi_codec PUBLIC ${NFAPI_CODEC_INCLUDES})
+    target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
+    target_compile_definitions(nfapi_codec PUBLIC
+        MAX_NUM_CCs=1 ENABLE_AERIAL FAPI_BYTE_ORDERING_BIG_ENDIAN)
+    set_source_files_properties(
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
+        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
+        PROPERTIES COMPILE_DEFINITIONS "ENABLE_10_04")
+    target_compile_options(nfapi_codec PRIVATE -w)
+    target_link_options(nfapi_codec PRIVATE
+        "-Wl,--version-script=${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI/nfapi_codec_le.map")
+    target_link_libraries(nfapi_codec PUBLIC z pthread m)
+
+    # Big-endian codec for the OAI/nFAPI side. Same sources plus the classic
+    # nfapi/src/* transport, compiled without FAPI_BYTE_ORDERING_BIG_ENDIAN
+    # (big-endian branch) and with the be_* rename force-included. The version
+    # script exports only the be_* API and free_* helpers.
+    add_library(nfapi_codec_be SHARED ${NFAPI_BE_SOURCES})
+    target_include_directories(nfapi_codec_be PUBLIC ${NFAPI_CODEC_INCLUDES})
+    target_include_directories(nfapi_codec_be PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
+    target_compile_definitions(nfapi_codec_be PUBLIC MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
+    target_compile_options(nfapi_codec_be PRIVATE -w
+        "-include" "${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI/nfapi_codec_be_rename.h")
+    target_link_options(nfapi_codec_be PRIVATE
+        "-Wl,--version-script=${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI/nfapi_codec_be.map")
+    target_link_libraries(nfapi_codec_be PUBLIC z pthread m)
+endif()
+
 
 add_executable(xfapi_main ${SOURCES})
 
@@ -402,6 +497,63 @@ if(AERIAL_OCUDU)
     # A source-built libnvipc.so leaves nvlog/fmtlog/yaml-cpp undefined. Resolve
     # them from the same tree at link and run time. The vendored blob defines
     # them internally, so these lookups are optional and skipped when absent.
+    get_filename_component(NVIPC_PARENT "${NVIPC_DIR}" DIRECTORY)
+    foreach(_dep nvlog fmtlog-shared)
+        find_library(NVIPC_${_dep}_LIB NAMES ${_dep}
+                     HINTS ${NVIPC_DIR} ${NVIPC_PARENT} NO_DEFAULT_PATH)
+        if(NVIPC_${_dep}_LIB)
+            target_link_libraries(xfapi_main PRIVATE ${NVIPC_${_dep}_LIB})
+        endif()
+    endforeach()
+    set_target_properties(xfapi_main PROPERTIES
+        BUILD_RPATH "${NVIPC_DIR};${NVIPC_PARENT}"
+        INSTALL_RPATH "${NVIPC_DIR};${NVIPC_PARENT}"
+    )
+endif()
+
+# AERIAL_OAI: nvIPC toward Aerial (as AERIAL_OCUDU) + classic nFAPI toward OAI.
+# Links both codec libraries (little-endian for Aerial, big-endian for OAI),
+# libnvipc.so, and sctp for the P5 control plane. No xSM, no DPDK in this mode.
+if(AERIAL_OAI)
+    if(NOT NVIPC_DIR)
+        if(EXISTS "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC/libnvipc.so")
+            set(NVIPC_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC")
+        else()
+            set(NVIPC_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc")
+        endif()
+    endif()
+    set(NVIPC_LIB_PATH "${NVIPC_DIR}/libnvipc.so")
+    if(NOT EXISTS ${NVIPC_LIB_PATH})
+        message(FATAL_ERROR "libnvipc.so not found at ${NVIPC_LIB_PATH}. "
+                            "Build the nvIPC sources or pass -DNVIPC_DIR=<path>.")
+    endif()
+    if(EXISTS "${NVIPC_DIR}/include/nv_ipc.h")
+        set(NVIPC_INCLUDE_DIR "${NVIPC_DIR}/include")
+    else()
+        set(NVIPC_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/include")
+    endif()
+
+    set(NFAPI_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
+    target_include_directories(xfapi_main PRIVATE
+        ${NVIPC_INCLUDE_DIR}
+        ${PROJECT_SOURCE_DIR}/src/ipc
+        ${NFAPI_DIR}
+        ${NFAPI_DIR}/open-nFAPI/nfapi/public_inc
+        ${NFAPI_DIR}/open-nFAPI/common/public_inc
+        ${NFAPI_DIR}/open-nFAPI/fapi/inc
+        ${NFAPI_DIR}/oai_common
+        ${NFAPI_DIR}/oai_common/common/utils
+        ${PROJECT_SOURCE_DIR}/src/main
+        ${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI
+        ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
+    )
+    # ENABLE_AERIAL: our glue sees the Aerial vendor TLV tags (the SCF side).
+    # The big-endian OAI entry points are reached via the be_* declarations in
+    # src/core/AERIAL_OAI/nfapi_codec_be.h; the shared structs are identical.
+    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_AERIAL)
+    target_link_libraries(xfapi_main PRIVATE
+        nfapi_codec nfapi_codec_be ${NVIPC_LIB_PATH} sctp pthread rt)
+
     get_filename_component(NVIPC_PARENT "${NVIPC_DIR}" DIRECTORY)
     foreach(_dep nvlog fmtlog-shared)
         find_library(NVIPC_${_dep}_LIB NAMES ${_dep}
