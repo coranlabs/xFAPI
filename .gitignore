@@ -8,7 +8,8 @@ a.out
 .vscode
 
 # Generated logs and stats
-generated_logs/
+generated_logs/*
+!generated_logs/.gitkeep
 *.log
 *.txt
 
