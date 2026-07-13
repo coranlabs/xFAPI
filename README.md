@@ -16,7 +16,7 @@
 <p align="center"><i>"Making the OpenRAN Truly Open."</i></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v2.2.0-blue" alt="Release v2.2.0"/>
+  <img src="https://img.shields.io/badge/release-v2.3.0-blue" alt="Release v2.3.0"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0"/>
 </p>
 
@@ -26,6 +26,8 @@
   - [xFAPI Architecture](#xfapi-architecture)
 - [Reference Architecture](#reference-architecture)
 - [Need of xFAPI](#need-of-xfapi)
+  - [NVIDIA Aerial L1 - OCUDU L2 Topology](#nvidia-aerial-l1---ocudu-l2-topology)
+  - [NVIDIA Aerial L1 - OAI L2 Topology](#nvidia-aerial-l1---oai-l2-topology)
   - [OAI L1 - OCUDU L2 Topology](#oai-l1---ocudu-l2-topology)
   - [OCUDU L1 - OCUDU L2 Topology](#ocudu-l1---ocudu-l2-topology)
   - [FlexRAN OSC DU-High Topology](#flexran-osc-du-high-topology)
@@ -69,11 +71,27 @@ It acts as a bridge by facilitating communication across various inter-process c
 
 By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures a vendor-agnostic Radio Access Network (RAN) stack, enhancing flexibility and interoperability within the ecosystem.
 
+#### NVIDIA Aerial L1 - OCUDU L2 Topology
+
+- xFAPI bridges NVIDIA Aerial L1 (SCF FAPI over nvIPC shared memory) with OCUDU L2 (xSM shared memory), translating between the two FAPI dialects and IPC mechanisms to achieve a full end-to-end connection.
+
+  - **Topology:** 3GPP-Compliant 5G Core + CU + OCUDU DU + xFAPI + NVIDIA Aerial L1 + LiteON + COTS UE
+
+![aerial-l1-ocudu-l2-topology](./docs/images/aerial_ocudu_topology.png)
+
+#### NVIDIA Aerial L1 - OAI L2 Topology
+
+- xFAPI bridges NVIDIA Aerial L1 (SCF FAPI over nvIPC shared memory) with OAI L2 (nFAPI over sockets), translating between the two FAPI dialects and IPC mechanisms to achieve a full end-to-end connection.
+
+  - **Topology:** 3GPP-Compliant 5G Core + CU + OAI L2 + xFAPI + NVIDIA Aerial L1 + LiteON + COTS UE
+
+![aerial-l1-oai-l2-topology](./docs/images/aerial_oai_topology.png)
+
 #### OAI L1 - OCUDU L2 Topology
 
 - xFAPI bridges OAI L1 (nFAPI over sockets) with OCUDU L2 (xSM shared memory), translating between the two FAPI dialects and IPC mechanisms to achieve a full end-to-end connection.
 
-  - **Topology:** 3GPP-Compliant 5G Core + OCUDU CU + modified OCUDU L2 + xFAPI + OAI L1 + LiteON + COTS UE
+  - **Topology:** 3GPP-Compliant 5G Core + OCUDU CU +  OCUDU L2 + xFAPI + OAI L1 + LiteON + COTS UE
 
 ![oai-l1-ocudu-l2-topology](./docs/images/oai_ocudu_topology.png)
 
@@ -81,7 +99,7 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 
 - As OCUDU L1 and OCUDU L2, xFAPI enables a FAPI-split deployment of the OCUDU stack, achieving full end-to-end connectivity within a homogeneous OCUDU stack.
 
-  - **Topology:** 3GPP-Compliant 5G Core + OCUDU CU + modified OCUDU L2 + xFAPI + modified OCUDU L1 + LiteON + COTS UE
+  - **Topology:** 3GPP-Compliant 5G Core + OCUDU CU +  OCUDU L2 + xFAPI +  OCUDU L1 + LiteON + COTS UE
 
 ![ocudu-ocudu-topology](./docs/images/ocudu_ocudu_topology.png)
 
@@ -89,7 +107,7 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 
 - xFAPI has successfully achieved end-to-end (E2E) connection between OSC DU-High and FlexRAN versions `v22.11` and `v23.07`.
 
-  - **Topology:** 3GPP-Compliant 5G Core + modified OAI CU + modified OSC DU-High + xFAPI + FlexRAN v22.11/v23.07 + LiteON
+  - **Topology:** 3GPP-Compliant 5G Core +  OAI CU +  OSC DU-High + xFAPI + FlexRAN v22.11/v23.07 + LiteON
 
 ![flexran-osc-du-high-topology](./docs/images/flexran_osc_topology.png)
 
@@ -97,7 +115,7 @@ By eliminating vendor lock-in associated with the FAPI interface, xFAPI ensures 
 
 - xFAPI fully supports the nFAPI interface at the L1 side, enabling a complete end-to-end connection between OSC DU-High and OAI L1.
 
-  - **Topology:** 3GPP-Compliant 5G Core + modified OAI CU + modified OSC DU-High + xFAPI + OAI L1 + LiteON + COTS UE
+  - **Topology:** 3GPP-Compliant 5G Core +  OAI CU +  OSC DU-High + xFAPI + OAI L1 + LiteON + COTS UE
 
 ![oai-l1-osc-du-high-topology](./docs/images/oai_osc_topology.png)
 

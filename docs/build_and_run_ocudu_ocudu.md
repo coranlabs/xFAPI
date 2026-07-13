@@ -1,6 +1,14 @@
-# xFAPI — Build & Run
+# xFAPI - Build & Run (OCUDU_OCUDU)
 
 A short guide for compiling and running the xFAPI bridge in `OCUDU_OCUDU` mode.
+
+## Topology
+
+![OCUDU_OCUDU topology](images/bringup_ocudu_ocudu_topology.png)
+
+## Architecture
+
+![OCUDU_OCUDU architecture](images/bringup_ocudu_ocudu_architecture.png)
 
 ## 1. Prerequisites
 
@@ -12,13 +20,15 @@ sudo apt install -y build-essential cmake pkg-config \
                     libyaml-dev zlib1g-dev libhugetlbfs-dev
 ```
 
-DPDK must be installed separately. Export its install prefix before building:
+DPDK must be installed separately. Set `DPDK_PATH` in `setup_env.sh` (repo root)
+to your DPDK install prefix, then source it before building:
 
 ```bash
-export DPDK_PATH=/path/to/dpdk/install
+source setup_env.sh
 ```
 
-(`setup_env.sh` in the repo root is a convenience helper for setting this.)
+This exports `DPDK_PATH` and `PKG_CONFIG_PATH`. You can also just
+`export DPDK_PATH=/path/to/dpdk/install` yourself.
 
 ## 2. Build
 
