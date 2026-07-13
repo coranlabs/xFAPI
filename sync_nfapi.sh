@@ -1,22 +1,58 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Sync the OAI nFAPI sources into this repo's src/ipc/nfapi tree.
+
+Usage:
+  sync_nfapi.sh [-n] [-v] [OAI_DIR]
+  sync_nfapi.sh -h | --help
+
+Arguments:
+  OAI_DIR        Path to an OAI checkout (contains an nfapi/ directory).
+                 May also be set via the $OAI_DIR environment variable.
+
+Options:
+  -n             Dry run — list what would be copied, write nothing.
+  -v             Verbose — print each copied file.
+  -h, --help     Show this help and exit.
+
+Environment:
+  OAI_DIR        Default OAI checkout path (overridden by the positional arg).
+  NFAPI_DIR      Destination tree (default: <script dir>/src/ipc/nfapi).
+
+Examples:
+  sync_nfapi.sh /home/user/openairinterface
+  OAI_DIR=/opt/oai sync_nfapi.sh -v
+  sync_nfapi.sh -n /opt/oai
+EOF
+}
+
+# Handle long --help before getopts (getopts only parses short options).
+for arg in "$@"; do
+  case "$arg" in
+    --help) usage; exit 0 ;;
+  esac
+done
+
 DRY_RUN=0
 VERBOSE=0
 while getopts "nvh" opt; do
   case "$opt" in
     n) DRY_RUN=1 ;;
     v) VERBOSE=1 ;;
-    h) sed -n '2,37p' "$0"; exit 0 ;;
-    *) echo "unknown option" >&2; exit 2 ;;
+    h) usage; exit 0 ;;
+    *) echo "unknown option" >&2; echo >&2; usage >&2; exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NFAPI_DIR="${NFAPI_DIR:-$SCRIPT_DIR/src/ipc/nfapi}"
-OAI="${1:-${OAI_DIR:-/home/seven/openairinterface}}"
+OAI="${1:-${OAI_DIR:-}}"
 
+[[ -n "$OAI" ]]        || { echo "error: OAI dir not set — pass it as the first argument or via \$OAI_DIR" >&2; echo >&2; usage >&2; exit 1; }
 [[ -d "$OAI" ]]        || { echo "error: OAI dir not found: $OAI" >&2; exit 1; }
 [[ -d "$OAI/nfapi" ]]  || { echo "error: '$OAI/nfapi' not found — is this an OAI checkout?" >&2; exit 1; }
 
