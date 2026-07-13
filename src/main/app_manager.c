@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "app_context.h"
+#include "startup_banner.h"
 #include "../sim/common/sim_common.h"
 #ifdef OCUDU_OCUDU
 #include "../core/OCUDU_OCUDU/forwarder_l1_to_l2.h"
@@ -34,29 +35,38 @@
 
 static void app_select_interfaces(AppContext* ctx) {
 #ifdef OCUDU_OCUDU
-    SM_Logs(LOG_INFO, _XFAPI_, "Selecting xSM bridge interfaces.");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L1 OCUDU  - xSM master, pair 0");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L2 OCUDU  - xSM slave,  pair 1");
     ctx->ocudu_l1_ctx = get_ocudu_l1_interface();
     ctx->ocudu_l2_ctx = get_ocudu_l2_interface();
-    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #elif defined(OAI_OCUDU)
-    SM_Logs(LOG_INFO, _XFAPI_, "Selecting OAI L1 (nFAPI) + OCUDU L2 (xSM) interfaces.");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L1 OAI    - nFAPI VNF (SCTP P5 + UDP P7)");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L2 OCUDU  - xSM slave, memzone 'xsm_bridge' pair 1");
     ctx->oai_l1_ctx   = get_oai_l1_interface();
     ctx->ocudu_l2_ctx = get_ocudu_l2_interface();
-    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #elif defined(AERIAL_OCUDU)
-    SM_Logs(LOG_INFO, _XFAPI_, "Selecting Aerial L1 (nvIPC) + OCUDU L2 (xSM) interfaces.");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L1 Aerial - nvIPC secondary, prefix '%s'",
+            ctx->config.nvipc.prefix);
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L2 OCUDU  - xSM slave, memzone '%s' pair 1",
+            ctx->config.ocudu_xsm_l2.device_name);
     ctx->aerial_l1_ctx = get_aerial_l1_interface();
     ctx->ocudu_l2_ctx  = get_ocudu_l2_interface();
-    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #elif defined(AERIAL_OAI)
-    SM_Logs(LOG_INFO, _XFAPI_, "Selecting Aerial L1 (nvIPC) + OAI L2 (nFAPI) interfaces.");
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] L1 Aerial - nvIPC secondary, prefix '%s'",
+            ctx->config.nvipc.prefix);
+    SM_Logs(LOG_INFO, _XFAPI_,
+            "[BIND] L2 OAI    - nFAPI PNF, SCTP->%s:%d + UDP :%d",
+            ctx->config.nfapi_socket.remote_ip,
+            ctx->config.nfapi_socket.p5_remote_port,
+            ctx->config.nfapi_socket.p7_local_port);
     ctx->aerial_l1_ctx = get_aerial_oai_l1_interface();
     ctx->oai_l2_ctx    = get_oai_l2_interface();
-    SM_Logs(LOG_INFO, _XFAPI_, "L1 and L2 interface selection successful.");
 #else
     SM_Logs(LOG_CRTERR, _XFAPI_, "No valid mode defined!");
     (void)ctx;
+    return;
 #endif
+    SM_Logs(LOG_INFO, _XFAPI_, "[BIND] interfaces bound");
 }
 
 int app_init(AppContext* ctx) {
@@ -174,7 +184,8 @@ int app_init(AppContext* ctx) {
 
 void app_run(AppContext* ctx) {
     ctx->is_running = 1;
-    SM_Logs(LOG_INFO, _XFAPI_, GREEN "🚀 Application running" RESET_COLOR);
+    SM_Logs(LOG_INFO, _XFAPI_,
+            GREEN "[UP  ] xFAPI running - waiting for " XFAPI_WAIT_ON RESET_COLOR);
     while(ctx->is_running) {
 
         sleep(1);

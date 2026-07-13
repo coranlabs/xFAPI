@@ -20,6 +20,7 @@
 #include "../framework/framework_init.h"
 #include "../framework/dpdk/dpdk_init.h"
 #include "app_context.h"
+#include "startup_banner.h"
 #include "../utils/stats_generation/message_stats.h"
 #include <signal.h>
 #include <string.h>
@@ -155,10 +156,13 @@ int main(int argc, char *argv[]) {
 
     logger_init(&app_context.config);
 
-    SM_Logs(LOG_INFO, _XFAPI_, "Initializing message statistics tracking...");
+    XFAPI_LOG_BANNER();
+
+    SM_Logs(LOG_INFO, _XFAPI_, "[INIT] message statistics ready");
     init_message_stats();
 
-    SM_Logs(LOG_INFO, _XFAPI_, YELLOW "⏳ Initializing application..." RESET_COLOR);
+    SM_Logs(LOG_INFO, _XFAPI_, "[INIT] config loaded: %s", cfg_filename);
+    SM_Logs(LOG_INFO, _XFAPI_, YELLOW "[INIT] initializing application" RESET_COLOR);
     if (app_init(&app_context) != 0) {
         SM_Logs(LOG_CRTERR, _XFAPI_, "Application initialization failed!");
         return 1;

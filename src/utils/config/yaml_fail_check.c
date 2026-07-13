@@ -190,8 +190,11 @@ void validate_and_fill_config(xFAPI_Config *config, xFAPI_ConfigFlags *flags) {
     if (config->nvipc.prefix[0] == '\0') {
         report_missing_critical_param("nvipc.prefix");
     }
-    if (config->nfapi_socket.p5_local_port == 0) {
-        report_missing_critical_param("nfapi_socket.p5_local_port");
+    if (config->nfapi_socket.remote_ip[0] == '\0') {
+        report_missing_critical_param("nfapi_socket.remote_ip");
+    }
+    if (config->nfapi_socket.p5_remote_port == 0) {
+        report_missing_critical_param("nfapi_socket.p5_remote_port");
     }
     if (config->nfapi_socket.p7_local_port == 0) {
         report_missing_critical_param("nfapi_socket.p7_local_port");
@@ -210,11 +213,11 @@ void print_config_table(const xFAPI_Config *config) {
     SM_Logs(LOG_INFO, _XFAPI_, "nvIPC prefix:           %s", config->nvipc.prefix);
     SM_Logs(LOG_INFO, _XFAPI_, "nvIPC rx mode:          %s",
             config->nvipc.blocking ? "blocking (sem)" : "epoll (fd)");
-    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P5 listen port:   %d",
-            config->nfapi_socket.p5_local_port);
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P5 connect to:    %s:%d",
+            config->nfapi_socket.remote_ip, config->nfapi_socket.p5_remote_port);
     SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P7 bind port:     %d",
             config->nfapi_socket.p7_local_port);
-    SM_Logs(LOG_INFO, _XFAPI_, "OAI L2 remote ip/p7:    %s / %d",
+    SM_Logs(LOG_INFO, _XFAPI_, "nFAPI P7 send to:       %s:%d",
             config->nfapi_socket.remote_ip, config->nfapi_socket.p7_remote_port);
     SM_Logs(LOG_INFO, _XFAPI_, "Fwd recv/send core:     %d / %d",
             config->forwarder.recv_core_id, config->forwarder.send_core_id);

@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OAI re-frame bridge: unpack a message with one codec into the shared
-// open-nFAPI struct, then pack the struct with the other codec. SCF (Aerial) is
-// little-endian via fapi_nr_*; nFAPI (OAI) is big-endian via be_fapi_nr_* /
-// be_nfapi_nr_*. The struct is the only common ground; no OCUDU representation.
+// Re-frame bridge: unpack with one codec into the shared open-nFAPI struct, pack
+// with the other. SCF (Aerial) is little-endian (fapi_nr_*); nFAPI (OAI) is
+// big-endian (be_nfapi_nr_*).
 
 #include "aerial_oai_bridge.h"
 
@@ -39,14 +38,7 @@
 #include "nr_fapi_p7.h"
 #include "nr_fapi_p7_utils.h"
 
-// Largest P7 message struct (tx_data_request inlines its PDU/TLV arrays). The
-// scratch union is heap-allocated once per bridge helper call site is too big
-// for the stack, so P7 uses a thread-local reused buffer.
 #define AERIAL_OAI_SCF_HDR_SIZE 8u
-
-// ---------------------------------------------------------------------------
-// P5 (small structs: stack union is safe).
-// ---------------------------------------------------------------------------
 
 typedef union {
     nfapi_nr_p4_p5_message_header_t header;
@@ -60,8 +52,6 @@ typedef union {
     nfapi_nr_stop_indication_scf_t  stop_ind;
 } p5_msg_u;
 
-// Free whatever the P5 unpack allocated inside the message struct (TLV lists,
-// per-slot tables, vendor extension).
 static void p5_free(uint16_t msg_id, p5_msg_u* u)
 {
     switch (msg_id) {
@@ -85,8 +75,6 @@ static void p5_free(uint16_t msg_id, p5_msg_u* u)
     }
 }
 
-// OAI -> Aerial: big-endian nFAPI P5 request -> struct -> little-endian SCF ->
-// Aerial over nvIPC.
 int aerial_oai_bridge_p5_to_aerial(struct AppContext* ctx,
                                    const uint8_t* nfapi_msg, uint32_t len)
 {
@@ -101,14 +89,11 @@ int aerial_oai_bridge_p5_to_aerial(struct AppContext* ctx,
         p5_free(u.header.message_id, &u);
         return -1;
     }
-    // aerial_send_p5_msg packs from the struct with the little-endian codec.
     int rc = aerial_send_p5_msg(ctx, &u.header, sizeof(u));
     p5_free(u.header.message_id, &u);
     return rc;
 }
 
-// Aerial -> OAI: little-endian SCF P5 response -> struct -> big-endian nFAPI ->
-// OAI over SCTP.
 int aerial_oai_bridge_p5_to_oai(struct AppContext* ctx, int32_t msg_id,
                                 const uint8_t* scf_msg, uint32_t scf_len)
 {
@@ -129,11 +114,6 @@ int aerial_oai_bridge_p5_to_oai(struct AppContext* ctx, int32_t msg_id,
     return rc;
 }
 
-// ---------------------------------------------------------------------------
-// P7 (large structs: one heap scratch per direction, reused across calls).
-// ---------------------------------------------------------------------------
-
-// Free whatever the codec unpack allocated inside a P7 message struct.
 static void p7_free(uint16_t msg_id, void* msg)
 {
     switch (msg_id) {
@@ -159,10 +139,8 @@ static void p7_free(uint16_t msg_id, void* msg)
     }
 }
 
-// Scratch big enough for the largest P7 struct (tx_data_request). Allocated
-// lazily per thread; the bridge is driven by two threads (nvIPC RX for the
-// downlink-from-Aerial P7 indications, and the P7 rx_task for uplink-from-OAI
-// requests), so a __thread buffer avoids cross-thread contention without locks.
+// Per-thread scratch for the largest P7 struct; the bridge runs on two threads
+// (nvIPC RX and the P7 rx_task), so __thread avoids locking.
 static __thread uint8_t* g_p7_scratch = NULL;
 
 static void* p7_scratch(void)
@@ -173,8 +151,6 @@ static void* p7_scratch(void)
     return g_p7_scratch;
 }
 
-// OAI -> Aerial: big-endian nFAPI P7 request -> struct -> little-endian SCF ->
-// Aerial over nvIPC.
 int aerial_oai_bridge_p7_to_aerial(struct AppContext* ctx,
                                    const uint8_t* nfapi_msg, uint32_t len)
 {
@@ -202,7 +178,6 @@ int aerial_oai_bridge_p7_to_aerial(struct AppContext* ctx,
     return rc;
 }
 
-// Little-endian cursor over the SCF body (bounds-checked).
 typedef struct { const uint8_t* d; uint32_t len; uint32_t off; int err; } le_rd_t;
 static uint8_t  le_u8(le_rd_t* r)  { if (r->err || r->off + 1u > r->len) { r->err = 1; return 0; }
                                      return r->d[r->off++]; }
@@ -216,12 +191,9 @@ static uint32_t le_u32(le_rd_t* r) { if (r->err || r->off + 4u > r->len) { r->er
 
 #define AERIAL_OAI_RXDATA_MAX_TB_BYTES 65536u
 
-// RX_DATA needs a bespoke path: Aerial keeps the per-PDU headers in the SCF
-// msg_buf and concatenates the transport blocks in the nvIPC data_buf, in PDU
-// order. The generic SCF unpack instead reads the TB inline from msg_buf, which
-// is not Aerial's layout — so the headers are parsed by hand here and each
-// pdu->pdu is pointed at data_buf. Those pointers alias the caller's buffer and
-// must NOT be freed; only the pdu_list allocation is owned here.
+// RX_DATA: Aerial keeps per-PDU headers in msg_buf and the transport blocks in
+// data_buf (not the generic inline layout), so headers are parsed by hand and
+// each pdu->pdu aliases data_buf (not freed; only pdu_list is owned).
 static int bridge_rx_data_to_oai(struct AppContext* ctx,
                                  const uint8_t* scf_msg, uint32_t scf_len,
                                  const uint8_t* data_buf, uint32_t data_len)
@@ -270,18 +242,15 @@ static int bridge_rx_data_to_oai(struct AppContext* ctx,
             r.err = 1;
             break;
         }
-        pdu->pdu = (uint8_t*)(data_buf + tb_off);  // aliases data_buf; not freed
+        pdu->pdu = (uint8_t*)(data_buf + tb_off);
         tb_off  += pdu->pdu_length;
     }
 
     int rc = r.err ? -1 : oai_pnf_send_p7(ctx, &ind.header);
-    // Free only the list; pdu->pdu entries alias the caller's data_buf.
     free(ind.pdu_list);
     return rc;
 }
 
-// Aerial -> OAI: little-endian SCF P7 indication -> struct -> big-endian nFAPI ->
-// OAI over UDP.
 int aerial_oai_bridge_p7_to_oai(struct AppContext* ctx, int32_t msg_id,
                                 const uint8_t* scf_msg, uint32_t scf_len,
                                 const uint8_t* data_buf, uint32_t data_len)

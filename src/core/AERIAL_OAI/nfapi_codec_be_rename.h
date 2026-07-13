@@ -12,17 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OAI links the open-nFAPI codec TWICE in one process: little-endian for
-// the Aerial/SCF side (nfapi_codec) and big-endian for the OAI/nFAPI side
-// (nfapi_codec_be). The endianness is a compile-time switch, so both builds
-// share every function name and would collide at link time.
-//
-// This header is force-included (-include) into the big-endian codec build to
-// rename the six nFAPI entry points the OAI glue calls to be_*. The OAI glue
-// then calls the be_* names (declared in nfapi_codec_be.h), leaving the plain
-// names bound to the little-endian Aerial codec. A version script keeps every
-// other codec symbol (push16/pull16, the fapi_nr_* helpers) local to each
-// library, so the big-endian entry points really pack big-endian.
+// The open-nFAPI codec is linked twice (little-endian for Aerial, big-endian for
+// OAI); both share every symbol name. Force-included (-include) into the
+// big-endian build to rename its public entry points to be_*, avoiding a link
+// collision with the little-endian codec.
 
 #ifndef AERIAL_OAI_NFAPI_CODEC_BE_RENAME_H
 #define AERIAL_OAI_NFAPI_CODEC_BE_RENAME_H

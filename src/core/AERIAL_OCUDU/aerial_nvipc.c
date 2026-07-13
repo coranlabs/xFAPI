@@ -151,14 +151,15 @@ static void aerial_nvipc_handle_rx(aerial_nvipc_t* nv, const nv_ipc_msg_t* msg)
                 uint16_t sfn, slot;
                 memcpy(&sfn, b, 2);
                 memcpy(&slot, b + 2, 2);
-                SM_Logs(LOG_ERROR, _P7_,
-                        "[L1->L2] Aerial ERROR.indication SFN %u.%u "
-                        "msg_id=0x%02x err_code=0x%02x.",
-                        sfn, slot, b[4], b[5]);
+                // SM_Logs(LOG_ERROR, _P7_,
+                //         "[L1->L2] Aerial ERROR.indication SFN %u.%u "
+                //         "msg_id=0x%02x err_code=0x%02x.",
+                //         sfn, slot, b[4], b[5]);
+                (void)sfn; (void)slot;
             } else {
-                SM_Logs(LOG_ERROR, _P7_,
-                        "[L1->L2] Aerial ERROR.indication (msg_len=%d).",
-                        msg->msg_len);
+                // SM_Logs(LOG_ERROR, _P7_,
+                //         "[L1->L2] Aerial ERROR.indication (msg_len=%d).",
+                //         msg->msg_len);
             }
             break;
         }

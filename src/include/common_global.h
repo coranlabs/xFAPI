@@ -184,16 +184,19 @@ typedef struct {
     bool blocking;           /* 1 = rx_tti_sem_wait loop, 0 = epoll on get_fd */
 } aerial_oai_nvipc_config_t;
 
-/* nFAPI socket endpoints toward OAI L2 (MAC). xFAPI is the nFAPI PNF (server):
- * it SCTP-listens on p5_local_port and UDP-binds p7_local_port; OAI-MAC (VNF)
- * connects in and its advertised P7 address/port become the send target. */
+/* nFAPI socket endpoints toward OAI L2 (MAC). OAI's nFAPI VNF is the SCTP
+ * SERVER (it listens); xFAPI is the PNF that connects OUT to it. So P5 is a
+ * client connect to remote_ip:p5_remote_port (optionally bound to
+ * local_ip:p5_local_port). P7 is UDP: xFAPI binds p7_local_port and sends to
+ * remote_ip:p7_remote_port. */
 typedef struct {
     bool ipv6_enabled;
     char remote_ip[64];      /* OAI L2 (VNF) address                          */
     char local_ip[64];       /* this xFAPI (PNF) address                      */
-    int  p5_local_port;      /* xFAPI SCTP-listens here                       */
+    int  p5_remote_port;     /* OAI VNF P5 listen port; xFAPI connects here   */
+    int  p5_local_port;      /* xFAPI P5 local bind port (source)             */
     int  p7_local_port;      /* xFAPI UDP-binds here                          */
-    int  p7_remote_port;     /* default OAI L2 P7 port until VNF advertises   */
+    int  p7_remote_port;     /* OAI L2 P7 dest port                           */
     bool checksum_enabled;
 } aerial_oai_nfapi_socket_t;
 

@@ -30,7 +30,6 @@
 #include "nr_fapi_p5.h"
 #include "nr_fapi_p7.h"
 
-// Aerial's cpu_msg pool buffer is 15000 B; a packed P5 message never exceeds it.
 #define AERIAL_P5_TX_BUF_SIZE 15000u
 #define AERIAL_P7_MSG_BUF_SIZE 15000u
 #define AERIAL_P7_DATA_BUF_SIZE 576000u
@@ -58,14 +57,14 @@ int aerial_send_p5_msg(struct AppContext* ctx, void* nfapi_p5_hdr,
             "[L2->L1 P5] msg_id=0x%02x -> Aerial (msg_len=%d).",
             hdr->message_id, packed_len);
 
-    // The P5 packer already counts the 8-byte SCF prologue in its return value.
+    // P5 packer return value already includes the 8-byte SCF prologue.
     return aerial_nvipc_send(ctx, (int32_t)hdr->message_id,
                              ctx->aerial_oai_ctx.cell_id,
                              packed, (uint32_t)packed_len, NULL, 0);
 }
 
-// Aerial expects TX_DATA transport blocks in data_buf, 4-byte aligned, with
-// PDU_length rewritten to the bytes occupied there and the TLV tag forced to 2.
+// Aerial expects TX_DATA transport blocks in data_buf, 4-byte aligned, PDU_length
+// rewritten to the packed size, TLV tag forced to 2.
 static int aerial_pack_tx_data(nfapi_nr_tx_data_request_t* req,
                                uint8_t* data_buf, uint32_t data_buf_len,
                                int32_t* data_len)
@@ -144,7 +143,7 @@ int aerial_send_p7_msg(struct AppContext* ctx, void* nfapi_p7_hdr)
         return -1;
     }
 
-    // The P7 packer returns the BODY length only, unlike the P5 packer.
+    // P7 packer returns body length only (unlike P5); add the 8-byte prologue.
     uint32_t msg_len = (uint32_t)body_len + 8u;
 
     int rc = aerial_nvipc_send(ctx, (int32_t)hdr->message_id,

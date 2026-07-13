@@ -776,6 +776,8 @@ void parse_aerial_oai_nfapi_socket_config(yaml_parser_t *parser, xFAPI_Config *c
                         strncpy(config->nfapi_socket.local_ip, val,
                                 sizeof(config->nfapi_socket.local_ip) - 1);
                         config->nfapi_socket.local_ip[sizeof(config->nfapi_socket.local_ip) - 1] = '\0';
+                    } else if (strcmp(current_key, "p5_remote_port") == 0) {
+                        config->nfapi_socket.p5_remote_port = atoi(val);
                     } else if (strcmp(current_key, "p5_local_port") == 0) {
                         config->nfapi_socket.p5_local_port = atoi(val);
                     } else if (strcmp(current_key, "p7_local_port") == 0) {

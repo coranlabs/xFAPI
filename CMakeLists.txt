@@ -9,12 +9,8 @@ set(CMAKE_C_FLAGS_DEBUG "-g")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Set output directory for executables
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# ================================
-# Compile-time L1+L2 combinations & Simulation Mode Macros
-# ================================
 option(OAI_OSC "Use OAI as L1 and OSC as L2" OFF)
 option(FLEXRAN_OSC "Use FlexRAN as L1 and OSC as L2" OFF)
 option(FLEXRAN_OAI "Use FlexRAN as L1 and OAI as L2" OFF)
@@ -32,7 +28,6 @@ option(L2_SIM_OAI_FRAN "Simulated L2: OAI, L1: FlexRAN" OFF)
 option(L2_SIM_OSC_OAI "Simulated L2: OSC, L1: OAI" OFF)
 option(L2_SIM_OSC_FRAN "Simulated L2: OSC, L1: FlexRAN" OFF)
 
-# Define L1+L2 combinations
 foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AERIAL_OCUDU AERIAL_OAI
               L1_SIM_OAI_OSC L1_SIM_OAI_OAI L1_SIM_FRAN_OSC L1_SIM_FRAN_OAI
               L2_SIM_OAI_OAI L2_SIM_OAI_FRAN L2_SIM_OSC_OAI L2_SIM_OSC_FRAN)
@@ -43,10 +38,6 @@ foreach(mode OAI_OSC FLEXRAN_OSC FLEXRAN_OAI AERIAL_OSC OCUDU_OCUDU OAI_OCUDU AE
     endif()
 endforeach()
 
-# The modes are mutually exclusive: each defines its own nfapi_codec target and
-# source set. cmake caches -D<MODE>=ON options, so a stale build directory can
-# carry two modes ON at once and double-define nfapi_codec. Fail early and
-# clearly instead. Wipe the build directory to switch modes.
 list(LENGTH ENABLED_MODES ENABLED_MODE_COUNT)
 if(ENABLED_MODE_COUNT GREATER 1)
     message(FATAL_ERROR
@@ -56,9 +47,6 @@ if(ENABLED_MODE_COUNT GREATER 1)
         "-D<MODE>=ON.")
 endif()
 
-# ========================
-# Add source files
-# ========================
 set(SOURCES
     src/main/main.c
     src/main/app_manager.c
@@ -72,7 +60,6 @@ set(SOURCES
     src/framework/framework_init.c
 
 )
-# conditional sources according to the selected mode
 
 if(OAI_OSC)
 endif()
@@ -110,11 +97,6 @@ endif()
 if(AERIAL_OSC)
 endif()
 
-
-# OCUDU L1 + OCUDU L2 bridged via prebuilt libxsm.so.
-# XFAPI runs as a single process: DPDK PRIMARY on file-prefix gnb0,
-# xSM SLAVE on two memzones (one per OCUDU side). OCUDU sides are
-# DPDK SECONDARY + xSM MASTER on their respective memzones.
 if(OCUDU_OCUDU)
     message(STATUS "Adding sources for OCUDU_OCUDU mode")
 
@@ -127,18 +109,12 @@ if(OCUDU_OCUDU)
         src/core/OCUDU_OCUDU/forwarder_split_l1.c
         src/core/OCUDU_OCUDU/forwarder_split_l2.c
         src/core/OCUDU_OCUDU/pair0_master_pool.c
-        # Pulled in because main.c unconditionally references them.
+
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
     )
 endif()
 
-
-# OAI L1 (nFAPI over UDP sockets) + OCUDU L2 (xSM-bridged).
-# XFAPI owns the "xsm_bridge" memzone (the role OCUDU-L1 plays in
-# OCUDU_OCUDU): DPDK PRIMARY on file-prefix, xSM SLAVE on pair 1 toward
-# OCUDU-L2 (which attaches as xSM MASTER on pair 1). The L1-facing side is
-# UDP sockets to OAI instead of an xSM pair.
 if(OAI_OCUDU)
     message(STATUS "Adding sources for OAI_OCUDU mode")
 
@@ -149,8 +125,7 @@ if(OAI_OCUDU)
         src/core/OAI_OCUDU/oai_vnf.c
         src/core/OAI_OCUDU/oai_p7.c
         src/core/OAI_OCUDU/forwarder_l2_to_oai.c
-        # OCUDU-FAPI <-> nFAPI P5 translation layer (our code; pure C, no OCUDU
-        # C++ dependency).
+
         src/translation/OAI_L1_OCUDU/L2_to_L1/oai_l2_to_l1_p5.c
         src/translation/OAI_L1_OCUDU/L2_to_L1/P5/param_request.c
         src/translation/OAI_L1_OCUDU/L2_to_L1/P5/config_request.c
@@ -169,22 +144,11 @@ if(OAI_OCUDU)
         src/translation/OAI_L1_OCUDU/L2_to_L1/P7/dl_tti_request.c
         src/translation/OAI_L1_OCUDU/L2_to_L1/P7/tx_data_request.c
         src/translation/OAI_L1_OCUDU/L2_to_L1/P7/ul_tti_request.c
-        # Pulled in because main.c unconditionally references them.
+
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
     )
 
-    # -------------------------------------------------------------------
-    # Third-party nFAPI codec (open-nFAPI). Built as a separate shared
-    # library so the upstream sources stay 100% untouched — xfapi_main
-    # links it and includes its public headers. Sources, include roots and
-    # the two required defines were determined empirically; do NOT edit any
-    # file under src/ipc/nfapi/.
-    #   -DMAX_NUM_CCs=1  : OAI normally supplies this from PHY headers; we
-    #                      pin it to 1 (single CC) for the standalone codec.
-    #   -DENABLE_SOCKET  : selects the socket (SCTP P5 / UDP P7) transport
-    #                      path in nfapi_p7.c (vs WLS).
-    # -------------------------------------------------------------------
     set(NFAPI_DIR     "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
     set(NFAPI_UP      "${NFAPI_DIR}/open-nFAPI")
     set(NFAPI_OAICOM  "${NFAPI_DIR}/oai_common")
@@ -200,40 +164,28 @@ if(OAI_OCUDU)
         ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
         ${NFAPI_UP}/fapi/src/nr_fapi_p7.c
         ${NFAPI_UP}/fapi/src/nr_fapi_p7_utils.c
-        # OAI support stub providing exit_function() referenced by the codec's
-        # AssertFatal macro (from OAI's assertions.h). OAI's own file; bundled
-        # so the codec .so is self-contained.
+
         ${NFAPI_OAICOM}/minimal_stub.c
     )
 
     add_library(nfapi_codec SHARED ${NFAPI_CODEC_SOURCES})
     target_include_directories(nfapi_codec PUBLIC
-        ${NFAPI_DIR}                         # resolves "nfapi/oai_integration/..." + "nfapi/open-nFAPI/..."
+        ${NFAPI_DIR}
         ${NFAPI_UP}/nfapi/public_inc
         ${NFAPI_UP}/common/public_inc
         ${NFAPI_UP}/fapi/inc
-        ${NFAPI_OAICOM}                      # OAI common/platform_types.h
-        ${NFAPI_OAICOM}/common/utils         # bare "assertions.h" etc.
+        ${NFAPI_OAICOM}
+        ${NFAPI_OAICOM}/common/utils
     )
-    # src/ipc is the include root used by the path-qualified upstream
-    # includes ("nfapi/oai_integration/vendor_ext.h", "nfapi/open-nFAPI/...").
+
     target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
-    # ENABLE_10_02 MUST match the OAI L1 build (its nr_fapi_p5 is built with
-    # ENABLE_10_02): it selects the SCF 10.02 cell PARAM/CONFIG wire layout
-    # (per-slot TDD table + SSB table). Without it the CONFIG.request would pack
-    # a different layout than OAI unpacks. (NOT ENABLE_10_04 / ENABLE_AERIAL.)
+
     target_compile_definitions(nfapi_codec PUBLIC MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
-    # Upstream code is third-party: silence its warnings so our -Werror-free
-    # build stays clean without editing it.
+
     target_compile_options(nfapi_codec PRIVATE -w)
     target_link_libraries(nfapi_codec PUBLIC z pthread m)
 endif()
 
-
-# Aerial L1 (SCF FAPI over nvIPC shared memory) + OCUDU L2 (xSM-bridged).
-# Mirrors OAI_OCUDU: xFAPI owns the "xsm_bridge" memzone (DPDK PRIMARY, xSM
-# SLAVE on pair 1 toward OCUDU-L2). The L1-facing side is the prebuilt nvIPC
-# library (xFAPI is the nvIPC SECONDARY; Aerial cuphycontroller is the PRIMARY).
 if(AERIAL_OCUDU)
     message(STATUS "Adding sources for AERIAL_OCUDU mode")
 
@@ -244,7 +196,7 @@ if(AERIAL_OCUDU)
         src/core/AERIAL_OCUDU/aerial_nvipc.c
         src/core/AERIAL_OCUDU/aerial_send.c
         src/core/AERIAL_OCUDU/forwarder_l2_to_aerial.c
-        # OCUDU-FAPI <-> SCF-FAPI translation layer.
+
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/aerial_l2_to_l1_p5.c
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/param_request.c
         src/translation/AERIAL_L1_OCUDU/L2_to_L1/P5/config_request.c
@@ -264,21 +216,11 @@ if(AERIAL_OCUDU)
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/rx_data_indication.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/uci_indication.c
         src/translation/AERIAL_L1_OCUDU/L1_to_L2/P7/srs_indication.c
-        # Pulled in because main.c unconditionally references them.
+
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
     )
 
-    # -------------------------------------------------------------------
-    # Third-party nFAPI codec, built for Aerial. The SCF FAPI wire format
-    # cuphycontroller parses is exactly what open-nFAPI emits when compiled
-    # with ENABLE_AERIAL, so the codec replaces a hand-written SCF encoder.
-    # Mirror OAI's own flags (nfapi/open-nFAPI/fapi/CMakeLists.txt):
-    #   nr_fapi_p5 -> ENABLE_AERIAL ENABLE_10_04
-    #   nr_fapi_p7 -> ENABLE_AERIAL
-    # ENABLE_10_04 does not alter any public struct, so xfapi_main only needs
-    # ENABLE_AERIAL to see the vendor TLV tags.
-    # -------------------------------------------------------------------
     set(NFAPI_DIR     "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
     set(NFAPI_UP      "${NFAPI_DIR}/open-nFAPI")
     set(NFAPI_OAICOM  "${NFAPI_DIR}/oai_common")
@@ -304,11 +246,7 @@ if(AERIAL_OCUDU)
         ${NFAPI_OAICOM}/common/utils
     )
     target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
-    # FAPI_BYTE_ORDERING_BIG_ENDIAN is misnamed: it selects the LITTLE-endian
-    # branch of push16/push32/pull* in common/src/nfapi.c, which is what Aerial
-    # needs since cuphycontroller reads the SCF structs natively. OAI sets the
-    # same define on nfapi_common whenever OAI_AERIAL is on. Without it the
-    # packed type_id and body length reach Aerial byte-swapped.
+
     target_compile_definitions(nfapi_codec PUBLIC
         MAX_NUM_CCs=1 ENABLE_AERIAL FAPI_BYTE_ORDERING_BIG_ENDIAN)
     set_source_files_properties(
@@ -319,19 +257,6 @@ if(AERIAL_OCUDU)
     target_link_libraries(nfapi_codec PUBLIC z pthread m)
 endif()
 
-
-# Aerial L1 (SCF FAPI over nvIPC) + OAI L2 (classic nFAPI over SCTP P5 + UDP P7).
-# xFAPI is the nvIPC SECONDARY toward Aerial (as in AERIAL_OCUDU) and the nFAPI
-# PNF (server) toward OAI-L2 (OAI-MAC connects in as the VNF). No xSM, no DPDK.
-#
-# Aerial speaks little-endian SCF and OAI speaks big-endian nFAPI, but both use
-# the same open-nFAPI codec whose endianness is a compile-time switch. So the
-# codec is built TWICE: nfapi_codec (little-endian, Aerial) and nfapi_codec_be
-# (big-endian, OAI). Both compile common/src/nfapi.c whose push16/pull16 carry
-# the endianness, and both export the same fapi_nr_* names, so each library is
-# isolated two ways: a version script keeps its internals (push16 etc.) local,
-# and the big-endian library renames its public entry points to be_* via a
-# force-included header so the OAI glue can call them alongside the Aerial ones.
 if(AERIAL_OAI)
     message(STATUS "Adding sources for AERIAL_OAI mode")
 
@@ -343,7 +268,7 @@ if(AERIAL_OAI)
         src/core/AERIAL_OAI/oai_pnf.c
         src/core/AERIAL_OAI/oai_p7.c
         src/core/AERIAL_OAI/aerial_oai_bridge.c
-        # Pulled in because main.c unconditionally references them.
+
         src/utils/config/yaml_fail_check.c
         src/utils/stats_generation/message_stats.c
     )
@@ -385,30 +310,21 @@ if(AERIAL_OAI)
         ${NFAPI_OAICOM}/common/utils
     )
 
-    # Little-endian codec for the Aerial/SCF side (as in AERIAL_OCUDU). The
-    # version script exports only the public API and keeps push16/pull16 local.
     add_library(nfapi_codec SHARED ${NFAPI_LE_SOURCES})
     target_include_directories(nfapi_codec PUBLIC ${NFAPI_CODEC_INCLUDES})
     target_include_directories(nfapi_codec PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
     target_compile_definitions(nfapi_codec PUBLIC
-        MAX_NUM_CCs=1 ENABLE_AERIAL FAPI_BYTE_ORDERING_BIG_ENDIAN)
-    set_source_files_properties(
-        ${NFAPI_UP}/fapi/src/nr_fapi_p5.c
-        ${NFAPI_UP}/fapi/src/nr_fapi_p5_utils.c
-        PROPERTIES COMPILE_DEFINITIONS "ENABLE_10_04")
+        MAX_NUM_CCs=1 ENABLE_AERIAL ENABLE_10_04 FAPI_BYTE_ORDERING_BIG_ENDIAN)
     target_compile_options(nfapi_codec PRIVATE -w)
     target_link_options(nfapi_codec PRIVATE
         "-Wl,--version-script=${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI/nfapi_codec_le.map")
     target_link_libraries(nfapi_codec PUBLIC z pthread m)
 
-    # Big-endian codec for the OAI/nFAPI side. Same sources plus the classic
-    # nfapi/src/* transport, compiled without FAPI_BYTE_ORDERING_BIG_ENDIAN
-    # (big-endian branch) and with the be_* rename force-included. The version
-    # script exports only the be_* API and free_* helpers.
     add_library(nfapi_codec_be SHARED ${NFAPI_BE_SOURCES})
     target_include_directories(nfapi_codec_be PUBLIC ${NFAPI_CODEC_INCLUDES})
     target_include_directories(nfapi_codec_be PRIVATE ${PROJECT_SOURCE_DIR}/src/ipc)
-    target_compile_definitions(nfapi_codec_be PUBLIC MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
+    target_compile_definitions(nfapi_codec_be PUBLIC
+        MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
     target_compile_options(nfapi_codec_be PRIVATE -w
         "-include" "${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI/nfapi_codec_be_rename.h")
     target_link_options(nfapi_codec_be PRIVATE
@@ -416,10 +332,8 @@ if(AERIAL_OAI)
     target_link_libraries(nfapi_codec_be PUBLIC z pthread m)
 endif()
 
-
 add_executable(xfapi_main ${SOURCES})
 
-# Add include directories to the target
 target_include_directories(xfapi_main PRIVATE
     ${CMAKE_SOURCE_DIR}/src/include
     ${PROJECT_SOURCE_DIR}/include
@@ -433,10 +347,6 @@ target_include_directories(xfapi_main PRIVATE
 if (AERIAL_OSC)
 endif()
 
-# OAI_OCUDU: expose the third-party nFAPI codec's public headers to our code
-# and link the codec shared library into xfapi_main. Our own nFAPI/VNF glue
-# (written under src/core/OAI_OCUDU/) includes these public headers and calls
-# the codec's pack/unpack entry points; it never includes upstream .c files.
 if(OAI_OCUDU)
     set(NFAPI_DIR "${PROJECT_SOURCE_DIR}/src/ipc/nfapi")
     target_include_directories(xfapi_main PRIVATE
@@ -447,28 +357,21 @@ if(OAI_OCUDU)
         ${NFAPI_DIR}/open-nFAPI/vnf/public_inc
         ${NFAPI_DIR}/oai_common
         ${NFAPI_DIR}/oai_common/common/utils
-        # Our P5 translators + VNF glue.
+
         ${PROJECT_SOURCE_DIR}/src/main
         ${PROJECT_SOURCE_DIR}/src/core/OAI_OCUDU
         ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU
         ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU/L2_to_L1
         ${PROJECT_SOURCE_DIR}/src/translation/OAI_L1_OCUDU/L1_to_L2
-        # Message-stats serializers ("message_stats.h") used by the P7 translators
-        # to emit dashboard-compatible message_content.
+
         ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
     )
-    # Our glue includes the same public headers, so it must see the same
-    # codec build definitions (incl. ENABLE_10_02 for the SCF 10.02 cell P5
-    # wire layout — see the nfapi_codec target above).
+
     target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_SOCKET ENABLE_10_02)
-    # nfapi_codec: the third-party nFAPI codec. sctp: P5 control plane runs
-    # over SCTP (xFAPI is the VNF/server).
+
     target_link_libraries(xfapi_main PRIVATE nfapi_codec sctp)
 endif()
 
-# AERIAL_OCUDU: expose the nvIPC library's public headers to our code and link
-# libnvipc.so into xfapi_main. Two layouts are supported, in priority order:
-# Override with -DNVIPC_DIR=<path> to point at an external nvIPC tree.
 if(AERIAL_OCUDU)
     if(NOT NVIPC_DIR)
         if(EXISTS "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC/libnvipc.so")
@@ -482,7 +385,7 @@ if(AERIAL_OCUDU)
         message(FATAL_ERROR "libnvipc.so not found at ${NVIPC_LIB_PATH}. "
                             "Build the nvIPC sources or pass -DNVIPC_DIR=<path>.")
     endif()
-    # Headers may sit beside the library or in the vendored include/ dir.
+
     if(EXISTS "${NVIPC_DIR}/include/nv_ipc.h")
         set(NVIPC_INCLUDE_DIR "${NVIPC_DIR}/include")
     else()
@@ -504,15 +407,12 @@ if(AERIAL_OCUDU)
         ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU
         ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU/L2_to_L1
         ${PROJECT_SOURCE_DIR}/src/translation/AERIAL_L1_OCUDU/L1_to_L2
-        # Message-stats serializers used by later P7 translators.
+
         ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
     )
     target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_AERIAL)
     target_link_libraries(xfapi_main PRIVATE nfapi_codec ${NVIPC_LIB_PATH} pthread rt)
 
-    # A source-built libnvipc.so leaves nvlog/fmtlog/yaml-cpp undefined. Resolve
-    # them from the same tree at link and run time. The vendored blob defines
-    # them internally, so these lookups are optional and skipped when absent.
     get_filename_component(NVIPC_PARENT "${NVIPC_DIR}" DIRECTORY)
     foreach(_dep nvlog fmtlog-shared)
         find_library(NVIPC_${_dep}_LIB NAMES ${_dep}
@@ -527,9 +427,6 @@ if(AERIAL_OCUDU)
     )
 endif()
 
-# AERIAL_OAI: nvIPC toward Aerial (as AERIAL_OCUDU) + classic nFAPI toward OAI.
-# Links both codec libraries (little-endian for Aerial, big-endian for OAI),
-# libnvipc.so, and sctp for the P5 control plane. No xSM, no DPDK in this mode.
 if(AERIAL_OAI)
     if(NOT NVIPC_DIR)
         if(EXISTS "${PROJECT_SOURCE_DIR}/src/ipc/nvipc/nvIPC/libnvipc.so")
@@ -563,10 +460,8 @@ if(AERIAL_OAI)
         ${PROJECT_SOURCE_DIR}/src/core/AERIAL_OAI
         ${PROJECT_SOURCE_DIR}/src/utils/stats_generation
     )
-    # ENABLE_AERIAL: our glue sees the Aerial vendor TLV tags (the SCF side).
-    # The big-endian OAI entry points are reached via the be_* declarations in
-    # src/core/AERIAL_OAI/nfapi_codec_be.h; the shared structs are identical.
-    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_AERIAL)
+
+    target_compile_definitions(xfapi_main PRIVATE MAX_NUM_CCs=1 ENABLE_AERIAL ENABLE_10_04)
     target_link_libraries(xfapi_main PRIVATE
         nfapi_codec nfapi_codec_be ${NVIPC_LIB_PATH} sctp pthread rt)
 
@@ -584,17 +479,10 @@ if(AERIAL_OAI)
     )
 endif()
 
-# ===========================
-# Initialize Linker Dependencies
-# ===========================
 set(LINK_LIBS "")
 
-# ===========================
-# Core Dependencies (Always On)
-# ===========================
 find_package(PkgConfig REQUIRED)
 
-# --- YAML dependency (libyaml) ---
 pkg_check_modules(YAML REQUIRED yaml-0.1)
 if (YAML_FOUND)
     message(STATUS "Found libyaml.")
@@ -641,34 +529,21 @@ endif()
 
 set(GCC_WARNING_FLAGS -Wall -Wextra -Wpedantic)
 
-# ===============================================
-# Apply Compiler Warnings to the Target
-# ===============================================
-# Add this line here. It applies the flags you just defined
-# to the 'xfapi_main' target. This assumes add_executable(xfapi_main ...)
-# has already been called earlier in your script.
 target_compile_options(xfapi_main PRIVATE ${GCC_WARNING_FLAGS})
 
-# Standard runtime security flags. These protect users from common C
-# vulnerabilities (stack-buffer overflows, libc misuse, RELRO/PLT
-# overwrites) and are recommended for any shipped C binary. Match the
-# Debian/Ubuntu hardening-includes defaults.
 target_compile_options(xfapi_main PRIVATE
-    -fstack-protector-strong       # canary on functions that take addresses or large buffers
-    -D_FORTIFY_SOURCE=2            # compile- and run-time checks for memcpy/strcpy/printf/...
-    -fPIE                          # position-independent code (paired with -pie at link time)
+    -fstack-protector-strong
+    -D_FORTIFY_SOURCE=2
+    -fPIE
 )
 
 target_link_options(xfapi_main PRIVATE
-    -pie                           # PIE executable; ASLR for the main image
-    -Wl,-z,relro                   # mark relocations read-only after dynamic linking
-    -Wl,-z,now                     # resolve all symbols at startup (full RELRO)
-    -Wl,-z,noexecstack             # make stack non-executable
+    -pie
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-z,noexecstack
 )
 
-# ===========================
-# Final Linking Stage
-# ===========================
 if(LINK_LIBS)
     message(STATUS "Final libraries to link: ${LINK_LIBS}")
     target_link_libraries(xfapi_main PRIVATE ${LINK_LIBS})
@@ -676,9 +551,6 @@ else()
     message(WARNING "No external libraries are being linked. Ensure this is correct for the chosen build mode.")
 endif()
 
-# ===========================
-# Set final executable location
-# ===========================
 set_target_properties(xfapi_main PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
 )

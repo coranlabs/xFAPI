@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OAI PNF — P7 (UDP) data plane. RX: listener -> rx_task reassembles
-// segments and re-frames each uplink toward Aerial. TX: be-pack -> segment ->
-// send toward the VNF. The nFAPI wire is big-endian (be_* codec).
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -45,9 +41,7 @@
 #include "nfapi_nr_interface.h"
 #include "nfapi_nr_interface_scf.h"
 
-// ===========================================================================
 // RX buffer pool
-// ===========================================================================
 
 void oai_pnf_rx_pool_init(oai_pnf_rx_pool_t* pool)
 {
@@ -83,9 +77,7 @@ void oai_pnf_rx_pool_release(oai_pnf_rx_pool_t* pool, oai_pnf_rx_slot_t* slot)
     atomic_store(&slot->in_use, 0);
 }
 
-// ===========================================================================
 // Segmentation reassembly
-// ===========================================================================
 
 void oai_pnf_seg_queue_init(oai_pnf_seg_queue_t* q)
 {
@@ -144,9 +136,7 @@ static oai_pnf_seq_entry_t* seg_find_or_alloc(oai_pnf_seg_queue_t* q, uint8_t se
     return NULL;
 }
 
-// ===========================================================================
 // Dispatch a fully-reassembled P7 message toward Aerial.
-// ===========================================================================
 
 static void oai_pnf_p7_dispatch(AppContext* ctx, const uint8_t* msg, uint32_t len)
 {
@@ -244,9 +234,7 @@ static void oai_pnf_p7_handle_segmented(oai_pnf_t* p, const uint8_t* msg,
     free(full);
 }
 
-// ===========================================================================
 // P7 RX threads
-// ===========================================================================
 
 static void* oai_pnf_p7_listener_thread(void* arg)
 {
@@ -347,7 +335,7 @@ static void* oai_pnf_p7_rx_task_thread(void* arg)
         oai_pnf_rx_item_t* item =
             (oai_pnf_rx_item_t*)itc_queue_pop(&ctx->aerial_oai_ctx.p7_rx_queue);
         if (item == NULL) {
-            break;  // queue deactivated during shutdown
+            break;
         }
 
         const uint8_t* data = item->slot->data;
@@ -423,9 +411,7 @@ void oai_pnf_p7_threads_stop(oai_pnf_t* p)
     pthread_join(p->rx_task_tid, NULL);
 }
 
-// ===========================================================================
 // P7 send path (Aerial -> OAI): be-pack -> segment -> sendto
-// ===========================================================================
 
 static int oai_pnf_p7_sendto(oai_pnf_t* p, const uint8_t* buf, uint32_t len)
 {
@@ -482,8 +468,7 @@ int oai_pnf_send_p7(struct AppContext* ctx, nfapi_nr_p7_message_header_t* header
             uint32_t seg_total = (uint32_t)(size + NFAPI_NR_P7_HEADER_LENGTH);
 
             memcpy(seg, buf, NFAPI_NR_P7_HEADER_LENGTH);
-            // NR P7 header: message_length big-endian u32 @ 4-7, m_segment_
-            // sequence big-endian u16 @ 8-9 (must match the OAI VNF's socket).
+            // NR P7 header: message_length big-endian u32 @ 4-7, m_segment_sequence u16 @ 8-9.
             seg[4] = (uint8_t)((seg_total >> 24) & 0xFF);
             seg[5] = (uint8_t)((seg_total >> 16) & 0xFF);
             seg[6] = (uint8_t)((seg_total >> 8)  & 0xFF);

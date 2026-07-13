@@ -5,7 +5,7 @@ app_name: "xfapi_main"
 # OAI-L2 (OAI-MAC connects in as the VNF). No DPDK, no xSM in this mode.
 
 logging:
-  vertical_level: "INFO"
+  vertical_level: "DEBUG"
   horizontal_level:
     xFAPI_log: true
     xSM_log: false
@@ -23,15 +23,25 @@ nvipc:
   prefix: "nvipc"
   blocking: false
 
-# nFAPI sockets toward OAI-L2 (MAC). xFAPI (PNF) SCTP-listens on p5_local_port
-# and UDP-binds p7_local_port; OAI-MAC (VNF) connects in. remote_ip/p7_remote_
-# port are the OAI-L2 P7 destination until the VNF advertises its own.
+# nFAPI sockets toward OAI-L2 (MAC). OAI's nFAPI VNF is the SCTP SERVER, so
+# xFAPI (PNF) CONNECTS OUT to it: SCTP to remote_ip:p5_remote_port (bound to
+# local_ip:p5_local_port). P7 is UDP: bind p7_local_port, send to
+# remote_ip:p7_remote_port.
+#
+# Mapping to the OAI VNF conf (MACRLCs):
+#   p5_remote_port = OAI local_s_portc   (VNF P5 listen)
+#   p5_local_port  = OAI remote_s_portc  (PNF P5 source)
+#   p7_local_port  = OAI remote_s_portd  (OAI sends here)
+#   p7_remote_port = OAI local_s_portd   (OAI receives here)
+#   remote_ip      = OAI local_s_address (VNF)
+#   local_ip       = OAI remote_s_address (PNF/this host)
 nfapi_socket:
-  remote_ip: "127.0.0.1"
-  local_ip: "127.0.0.1"
-  p5_local_port: 50001
-  p7_local_port: 50011
-  p7_remote_port: 50010
+  remote_ip: "192.168.1.127"
+  local_ip: "192.168.1.129"
+  p5_remote_port: 50001
+  p5_local_port: 50000
+  p7_local_port: 50010
+  p7_remote_port: 50011
   enable_checksum: true
 
 forwarder:

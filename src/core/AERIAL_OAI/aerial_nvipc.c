@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OAI nvIPC secondary client: attaches to the Aerial PRIMARY, drains the
-// RX queue and hands each SCF FAPI message to the Aerial->OAI bridge.
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// AERIAL_OAI PNF: xFAPI as nFAPI PNF (server); OAI L2 (MAC) is the VNF (client).
-// Owns the P5 (SCTP) handshake responder + cell-P5 relay and the P7 (UDP) data
-// plane. The wire is big-endian nFAPI, decoded/encoded via the be_* codec.
+// xFAPI as nFAPI PNF (server); OAI L2 (MAC) is the VNF. Owns the P5 (SCTP)
+// handshake responder + cell-P5 relay and the P7 (UDP) data plane.
 
 #ifndef AERIAL_OAI_OAI_PNF_H
 #define AERIAL_OAI_OAI_PNF_H
@@ -31,9 +30,6 @@
 
 struct AppContext;
 
-// ---------------------------------------------------------------------------
-// Tunables.
-// ---------------------------------------------------------------------------
 #define OAI_PNF_TX_BUF_SIZE       NFAPI_MAX_PACKED_MESSAGE_SIZE
 #define OAI_PNF_P7_SEGMENT_SIZE   1400
 #define OAI_PNF_P7_RX_POOL_SLOTS  256
@@ -45,12 +41,11 @@ struct AppContext;
 
 typedef enum {
     OAI_PNF_DISCONNECTED = 0,
-    OAI_PNF_CONNECTED,        // SCTP accepted, P5 up
-    OAI_PNF_CONFIGURED,       // PNF_CONFIG.response sent
-    OAI_PNF_RUNNING           // PNF_START.request seen; P7 active
+    OAI_PNF_CONNECTED,
+    OAI_PNF_CONFIGURED,
+    OAI_PNF_RUNNING
 } oai_pnf_state_t;
 
-// ---- P7 RX buffer pool (preallocated) ----
 typedef struct {
     uint8_t  data[OAI_PNF_P7_RX_SLOT_BYTES];
     uint32_t length;
@@ -68,7 +63,6 @@ typedef struct {
     uint32_t           length;
 } oai_pnf_rx_item_t;
 
-// ---- P7 segmentation reassembly ----
 typedef struct {
     int      active;
     uint8_t  sequence;
@@ -85,14 +79,9 @@ typedef struct {
     oai_pnf_seq_entry_t entries[OAI_PNF_P7_MAX_SEQUENCES];
 } oai_pnf_seg_queue_t;
 
-// ---------------------------------------------------------------------------
-// PNF runtime state. Allocated in oai_pnf_start(), owned by AppContext
-// (ctx->aerial_oai_ctx.pnf), freed in oai_pnf_stop().
-// ---------------------------------------------------------------------------
 typedef struct oai_pnf {
     struct AppContext* ctx;
 
-    // ---- P5 (SCTP) ----
     int                 listener_fd;
     int                 p5_sock;
     struct sockaddr_in  vnf_p5_addr;
@@ -100,19 +89,16 @@ typedef struct oai_pnf {
     pthread_t           p5_listener_tid;
     int                 p5_listener_started;
 
-    // ---- P7 (UDP) ----
     int                 p7_sock;
     struct sockaddr_in  vnf_p7_addr;
     int                 p7_addr_known;
     int                 p7_sequence;
 
-    // ---- codec configs ----
     nfapi_p4_p5_codec_config_t p5_codec;
     nfapi_p7_codec_config_t    p7_codec;
 
     uint8_t             p5_tx_buf[OAI_PNF_TX_BUF_SIZE];
 
-    // ---- P7 RX path ----
     oai_pnf_rx_pool_t   rx_pool;
     oai_pnf_seg_queue_t seg_queue;
     pthread_t           p7_listener_tid;
@@ -123,34 +109,19 @@ typedef struct oai_pnf {
     int                 checksum_enabled;
 } oai_pnf_t;
 
-// ---------------------------------------------------------------------------
-// Public API (framework/oai_l2_interface.c + the bridge).
-// ---------------------------------------------------------------------------
-
-// Start the PNF: SCTP P5 listener + UDP P7 socket + P5 listener thread. Returns
-// 0 on success, -1 on failure.
 int  oai_pnf_start(struct AppContext* ctx);
 
-// Stop all PNF threads, close sockets, free state. Idempotent.
 void oai_pnf_stop(struct AppContext* ctx);
 
-// Pack a fully-populated nFAPI P5 message (big-endian) and send it to the VNF
-// over SCTP. Used by the Aerial->OAI P5 bridge. Returns 0/-1.
 int  oai_pnf_send_p5(struct AppContext* ctx,
                      nfapi_nr_p4_p5_message_header_t* hdr, uint32_t msg_len);
 
-// Pack a fully-populated nFAPI P7 message (big-endian), segment if needed, and
-// send it to the VNF over UDP. Used by the Aerial->OAI P7 bridge. Returns 0/-1.
 int  oai_pnf_send_p7(struct AppContext* ctx, nfapi_nr_p7_message_header_t* header);
 
-// Aerial -> OAI entry point, called by the nvIPC RX thread for every SCF FAPI
-// message from Aerial. Routes P5 responses and P7 indications to the bridge.
-// Returns 0/-1.
 int  aerial_oai_from_aerial(struct AppContext* ctx, int32_t msg_id,
                             const uint8_t* scf_msg, uint32_t scf_len,
                             const uint8_t* data_buf, uint32_t data_len);
 
-// ---- P7 socket data path (oai_p7.c) ----
 void oai_pnf_rx_pool_init(oai_pnf_rx_pool_t* pool);
 oai_pnf_rx_slot_t* oai_pnf_rx_pool_acquire(oai_pnf_rx_pool_t* pool);
 void oai_pnf_rx_pool_release(oai_pnf_rx_pool_t* pool, oai_pnf_rx_slot_t* slot);

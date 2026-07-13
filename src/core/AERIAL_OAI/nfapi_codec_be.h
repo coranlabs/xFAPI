@@ -12,12 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Prototypes for the big-endian nFAPI codec entry points (nfapi_codec_be).
-// Its public API is renamed to be_* at build time (see nfapi_codec_be_rename.h),
-// so the OAI-facing glue includes this header and calls the be_* names, leaving
-// the plain nfapi_nr_* names bound to nothing here and the little-endian Aerial
-// codec keeping fapi_nr_*. The struct types are shared and come from the codec's
-// public headers. Signatures mirror nfapi_nr_interface.h exactly.
+// Big-endian nFAPI codec entry points, renamed to be_* at build time
+// (see nfapi_codec_be_rename.h) to isolate them from the little-endian codec.
 
 #ifndef AERIAL_OAI_NFAPI_CODEC_BE_H
 #define AERIAL_OAI_NFAPI_CODEC_BE_H

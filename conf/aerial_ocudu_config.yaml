@@ -79,3 +79,34 @@ logging:
     P7_log: true
   print_config: true
   print_datetime: true
+
+# =============================================================================
+# Log file generation (generated_logs/xfapi_logs.txt)
+# =============================================================================
+log_file:
+  generate_log_file: true
+  file_size: 104857600         # 100 MB
+  vertical_level: "INFO"
+  print_config: false
+  print_datetime: true
+
+# =============================================================================
+# Message stats capture (generated_logs/message_stats.json, read by dashboard)
+# =============================================================================
+# Written on clean shutdown (Ctrl-C). generated_logs/ must exist in the run dir.
+stats_file_generation:
+  generate_summary_file: true
+  generate_detailed_file: true
+  capture_ul_msgs: true
+  capture_dl_msgs: true
+  capture_p5_msgs: true
+  capture_p7_msgs: true
+
+# =============================================================================
+# Dashboard endpoint
+# =============================================================================
+dashboard:
+  enabled: true
+  bind_ip: "0.0.0.0"
+  port: 8080
+  core_id: -1
