@@ -181,6 +181,20 @@ function Toolbar({ stats, onRefresh, refreshing, onSaveToVault }) {
         }}>
         <span>💾</span> Save to Vault
       </button>
+      {stats?.mode && (
+        <div title={stats?.topology || "xFAPI bridge mode"}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "6px 14px", borderRadius: 6,
+            background: "oklch(from var(--accent) l c h / 0.12)",
+            border: `1px solid ${ACCENT}`,
+            fontFamily: MONO, fontSize: 14, fontWeight: 600,
+            color: COLORS.text, letterSpacing: "0.02em",
+          }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.textFaint, letterSpacing: "0.08em" }}>xFAPI</span>
+          <span style={{ color: ACCENT }}>{stats.mode}</span>
+        </div>
+      )}
       <div style={{ flex: 1 }} />
       <div style={{ fontSize: 13, color: COLORS.textMuted, fontFamily: MONO }}>
         <span style={{ color: COLORS.textFaint }}>SOURCE</span> {dataSource}

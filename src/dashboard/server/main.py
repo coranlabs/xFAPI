@@ -275,12 +275,31 @@ def _populate_time_diff(messages: List[Dict[str, Any]]) -> None:
         m['time_diff_us'] = (ts - last) // 1000 if last is not None else None
 
 
+def _extract_mode_topology(file_path):
+    """Read the top-level "mode"/"topology" fields without full JSON parsing
+    (used when the messages array itself is malformed)."""
+    import re
+    mode = topology = None
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
+            head = file.read(512)
+        m = re.search(r'"mode"\s*:\s*"([^"]*)"', head)
+        t = re.search(r'"topology"\s*:\s*"([^"]*)"', head)
+        if m:
+            mode = m.group(1)
+        if t:
+            topology = t.group(1)
+    except Exception:
+        pass
+    return mode, topology
+
+
 def parse_malformed_json(file_path):
     """Parse JSON file with unescaped newlines in message content"""
     messages = []
     
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             content = file.read()
         
         # Find the messages array start and end
@@ -298,12 +317,23 @@ def parse_malformed_json(file_path):
         
         # Parse messages one by one using regex
         import re
-        
-        # Pattern to match individual message objects
-        message_pattern = r'\{\s*"timestamp_ns":\s*(\d+),\s*"message_type":\s*"([^"]+)",\s*"sfn":\s*(\d+),\s*"slot":\s*(\d+),\s*"pdu_size":\s*(\d+),\s*"num_pdus":\s*(\d+),\s*"message_content":\s*"([^"]*(?:\\.[^"]*)*)"'
-        
+
+        # Pattern to match individual message objects. "ipc_latency_ns" is
+        # optional so both older dumps (without it) and current dumps (which
+        # write it between num_pdus and message_content) parse.
+        message_pattern = (
+            r'\{\s*"timestamp_ns":\s*(\d+),'
+            r'\s*"message_type":\s*"([^"]+)",'
+            r'\s*"sfn":\s*(-?\d+),'
+            r'\s*"slot":\s*(-?\d+),'
+            r'\s*"pdu_size":\s*(-?\d+),'
+            r'\s*"num_pdus":\s*(-?\d+),'
+            r'(?:\s*"ipc_latency_ns":\s*(\d+),)?'
+            r'\s*"message_content":\s*"([^"]*(?:\\.[^"]*)*)"'
+        )
+
         matches = re.finditer(message_pattern, messages_content, re.DOTALL)
-        
+
         for match in matches:
             timestamp_ns = int(match.group(1))
             message_type = match.group(2)
@@ -311,11 +341,12 @@ def parse_malformed_json(file_path):
             slot = int(match.group(4))
             pdu_size = int(match.group(5))
             num_pdus = int(match.group(6))
-            message_content = match.group(7)
-            
+            ipc_latency_ns = int(match.group(7)) if match.group(7) else 0
+            message_content = match.group(8)
+
             # Unescape the message content
             message_content = message_content.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
-            
+
             messages.append({
                 'timestamp_ns': timestamp_ns,
                 'message_type': message_type,
@@ -323,9 +354,10 @@ def parse_malformed_json(file_path):
                 'slot': slot,
                 'pdu_size': pdu_size,
                 'num_pdus': num_pdus,
+                'ipc_latency_ns': ipc_latency_ns,
                 'message_content': message_content
             })
-        
+
         return messages
         
     except Exception as e:
@@ -365,21 +397,28 @@ def load_json_data(custom_path=None):
             return False
         
         # First try standard JSON parsing
+        xfapi_mode = None
+        xfapi_topology = None
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
                 data = json.load(file)
             message_data = data.get('messages', [])
+            xfapi_mode = data.get('mode')
+            xfapi_topology = data.get('topology')
             log.info("loaded messages (standard parser)", extra={"count": len(message_data), "file_path": file_path})
         except json.JSONDecodeError as json_error:
             log.warning("standard JSON parse failed, trying custom parser",
                         extra={"file_path": file_path, "error": str(json_error)})
             message_data = parse_malformed_json(file_path)
+            xfapi_mode, xfapi_topology = _extract_mode_topology(file_path)
             log.info("loaded messages (custom parser)", extra={"count": len(message_data), "file_path": file_path})
-        
+
         # Generate summary statistics with enhanced message types
         stats_summary = generate_stats_summary(message_data)
         stats_summary["file_path"] = file_path
         stats_summary["data_source"] = "directory"
+        stats_summary["mode"] = xfapi_mode or "UNKNOWN"
+        stats_summary["topology"] = xfapi_topology or ""
 
         # Build SLOT_INDICATION lookup index once, then annotate every message
         # with time_diff_us. This makes the field available for both filtering

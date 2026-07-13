@@ -19,6 +19,25 @@
 #include <stdatomic.h>
 #include <unistd.h>
 
+// Compile-time xFAPI mode name/topology, surfaced in the stats JSON so the
+// dashboard can display which bridge mode produced the capture.
+#if defined(OCUDU_OCUDU)
+  #define XFAPI_STATS_MODE "OCUDU_OCUDU"
+  #define XFAPI_STATS_TOPO "OCUDU(xSM) <-> OCUDU(xSM)"
+#elif defined(OAI_OCUDU)
+  #define XFAPI_STATS_MODE "OAI_OCUDU"
+  #define XFAPI_STATS_TOPO "OAI(nFAPI) <-> OCUDU(xSM)"
+#elif defined(AERIAL_OCUDU)
+  #define XFAPI_STATS_MODE "AERIAL_OCUDU"
+  #define XFAPI_STATS_TOPO "Aerial(nvIPC) <-> OCUDU(xSM)"
+#elif defined(AERIAL_OAI)
+  #define XFAPI_STATS_MODE "AERIAL_OAI"
+  #define XFAPI_STATS_TOPO "Aerial(nvIPC) <-> OAI(nFAPI)"
+#else
+  #define XFAPI_STATS_MODE "UNKNOWN"
+  #define XFAPI_STATS_TOPO "no mode defined"
+#endif
+
 // nFAPI struct definitions consumed by the serialize_nfapi_* helpers below.
 // These are the open-nFAPI SCF interface headers (same lineage XFAPI used),
 // exposed to xfapi_main via its include dirs. Only the OAI_OCUDU mode pulls in
@@ -102,6 +121,8 @@ void dump_message_stats_to_json(void) {
     uint32_t start_index = (total_messages > MAX_MESSAGE_STATS) ? (total_messages % MAX_MESSAGE_STATS) : 0;
 
     fprintf(fp, "{\n");
+    fprintf(fp, "  \"mode\": \"%s\",\n", XFAPI_STATS_MODE);
+    fprintf(fp, "  \"topology\": \"%s\",\n", XFAPI_STATS_TOPO);
     fprintf(fp, "  \"total_messages_captured\": %u,\n", total_messages);
     fprintf(fp, "  \"messages_in_dump\": %u,\n", messages_to_dump);
     fprintf(fp, "  \"messages\": [\n");
